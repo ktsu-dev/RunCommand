@@ -2,62 +2,45 @@ namespace ktsu.RunCommand;
 
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 
 /// <summary>
-/// Provides functionality to execute commands and process their outputs.
+/// Provides functionality to execute shell commands and process their outputs.
 /// </summary>
 public static class RunCommand
 {
 	/// <summary>
-	/// Executes the specified command.
+	/// Executes a shell command synchronously.
 	/// </summary>
-	/// <param name="command">The command to execute, including any arguments.</param>
-	public static void Execute(string command) => Execute(command, null, null);
+	/// <param name="command">The command to execute.</param>
+	public static void Execute(string command) =>
+		ExecuteAsync(command).Wait();
 
 	/// <summary>
-	/// Executes the specified command and processes the standard output.
+	/// Executes a shell command synchronously with an output handler.
 	/// </summary>
-	/// <param name="command">The command to execute, including any arguments.</param>
-	/// <param name="onStandardOutput">An action to be invoked with undelimeted chunks from the command's standard output stream.</param>
-	public static void Execute(string command, Action<string>? onStandardOutput) => Execute(command, onStandardOutput, null);
+	/// <param name="command">The command to execute.</param>
+	/// <param name="outputHandler">The handler for processing command output.</param>
+	public static void Execute(string command, OutputHandler outputHandler) =>
+		ExecuteAsync(command, outputHandler).Wait();
 
 	/// <summary>
-	/// Executes the specified command and processes both standard output and standard error.
+	/// Executes a shell command asynchronously.
 	/// </summary>
-	/// <param name="command">The command to execute, including any arguments.</param>
-	/// <param name="onStandardOutput">An action to be invoked with undelimeted chunks from the command's standard output stream.</param>
-	/// <param name="onStandardError">An action to be invoked with undelimeted chunks from the command's standard error stream.</param>
-	public static void Execute(string command, Action<string>? onStandardOutput, Action<string>? onStandardError)
-		=> ExecuteAsync(command, onStandardOutput, onStandardError).Wait();
-
-	/// <summary>
-	/// Asynchronously executes the specified command.
-	/// </summary>
-	/// <param name="command">The command to execute, including any arguments.</param>
-	/// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+	/// <param name="command">The command to execute.</param>
+	/// <returns>A task representing the asynchronous operation.</returns>
 	public static async Task ExecuteAsync(string command)
-		=> await ExecuteAsync(command, null, null).ConfigureAwait(false);
+		=> await ExecuteAsync(command, new()).ConfigureAwait(false);
 
 	/// <summary>
-	/// Asynchronously executes the specified command and processes the standard output.
+	/// Executes a shell command asynchronously with an output handler.
 	/// </summary>
-	/// <param name="command">The command to execute, including any arguments.</param>
-	/// <param name="onStandardOutput">An action to be invoked with undelimeted chunks from the command's standard output stream.</param>
-	/// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
-	public static async Task ExecuteAsync(string command, Action<string>? onStandardOutput)
-		=> await ExecuteAsync(command, onStandardOutput, null).ConfigureAwait(false);
-
-	/// <summary>
-	/// Asynchronously executes the specified command and processes both standard output and standard error.
-	/// </summary>
-	/// <param name="command">The command to execute, including any arguments.</param>
-	/// <param name="onStandardOutput">An action to be invoked with undelimeted chunks from the command's standard output stream.</param>
-	/// <param name="onStandardError">An action to be invoked with undelimeted chunks from the command's standard error stream.</param>
-	/// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
-	public static async Task ExecuteAsync(string command, Action<string>? onStandardOutput, Action<string>? onStandardError)
+	/// <param name="command">The command to execute.</param>
+	/// <param name="outputHandler">The handler for processing command output.</param>
+	/// <returns>A task representing the asynchronous operation.</returns>
+	public static async Task ExecuteAsync(string command, OutputHandler outputHandler)
 	{
 		ArgumentNullException.ThrowIfNull(command);
+		ArgumentNullException.ThrowIfNull(outputHandler);
 
 		string[] commandParts = command.Split(' ', 2);
 
@@ -72,8 +55,8 @@ public static class RunCommand
 				Arguments = arguments,
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
-				StandardOutputEncoding = Encoding.UTF8,
-				StandardErrorEncoding = Encoding.UTF8,
+				StandardOutputEncoding = outputHandler.Encoding,
+				StandardErrorEncoding = outputHandler.Encoding,
 				UseShellExecute = false,
 				CreateNoWindow = true,
 			}
@@ -87,11 +70,11 @@ public static class RunCommand
 
 		process.Start();
 
-		AsyncStreamReader standardOutputReader = new(process.StandardOutput, onStandardOutput is null ? null : (sender, args) => onStandardOutput.Invoke(args.Data));
-		AsyncStreamReader standardErrorReader = new(process.StandardError, onStandardError is null ? null : (sender, args) => onStandardError.Invoke(args.Data));
-		standardOutputReader.Start();
-		standardErrorReader.Start();
+		AsyncProcessStreamReader outputReader = new(process, outputHandler);
 
-		await process.WaitForExitAsync().ConfigureAwait(false);
+		var outputTask = outputReader.Start();
+		var processTask = process.WaitForExitAsync();
+
+		await Task.WhenAll(outputTask, processTask).ConfigureAwait(false);
 	}
 }

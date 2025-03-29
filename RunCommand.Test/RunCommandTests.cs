@@ -41,14 +41,13 @@ public class RunCommandTests
 		// Using dotnet should be available in environments with .NET installed.
 		string command = "dotnet";
 
-		RunCommand.Execute(command,
-			output =>
+		RunCommand.Execute(command, new(output =>
+		{
+			if (!string.IsNullOrWhiteSpace(output))
 			{
-				if (!string.IsNullOrWhiteSpace(output))
-				{
-					outputCollector.Add(output);
-				}
-			});
+				outputCollector.Add(output);
+			}
+		}));
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
 	}
@@ -61,14 +60,13 @@ public class RunCommandTests
 		// Using dotnet should be available in environments with .NET installed.
 		string command = "dotnet";
 
-		await RunCommand.ExecuteAsync(command,
-			output =>
+		await RunCommand.ExecuteAsync(command, new(output =>
+		{
+			if (!string.IsNullOrWhiteSpace(output))
 			{
-				if (!string.IsNullOrWhiteSpace(output))
-				{
-					outputCollector.Add(output);
-				}
-			}).ConfigureAwait(false);
+				outputCollector.Add(output);
+			}
+		})).ConfigureAwait(false);
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
 	}
@@ -97,7 +95,7 @@ public class RunCommandTests
 
 		// Using dotnet should be available in environments with .NET installed.
 		string command = "dotnet";
-		RunCommand.Execute(command, onStandardOutput, onStandardError);
+		RunCommand.Execute(command, new(onStandardOutput, onStandardError));
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
 		Assert.AreEqual(0, errorCollector.Count, "Expected standard error to be empty.");
@@ -107,7 +105,7 @@ public class RunCommandTests
 
 		// Using a command that should fail.
 		command = "dotnet --versionz";
-		RunCommand.Execute(command, onStandardOutput, onStandardError);
+		RunCommand.Execute(command, new(onStandardOutput, onStandardError));
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
 		Assert.IsTrue(errorCollector.Count > 0, "Expected standard error to have content.");
@@ -137,7 +135,7 @@ public class RunCommandTests
 
 		// Using dotnet should be available in environments with .NET installed.
 		string command = "dotnet";
-		await RunCommand.ExecuteAsync(command, onStandardOutput, onStandardError).ConfigureAwait(false);
+		await RunCommand.ExecuteAsync(command, new(onStandardOutput, onStandardError)).ConfigureAwait(false);
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
 		Assert.AreEqual(0, errorCollector.Count, "Expected standard error to be empty.");
@@ -147,7 +145,7 @@ public class RunCommandTests
 
 		// Using a command that should fail.
 		command = "dotnet --versionz";
-		await RunCommand.ExecuteAsync(command, onStandardOutput, onStandardError).ConfigureAwait(false);
+		await RunCommand.ExecuteAsync(command, new(onStandardOutput, onStandardError)).ConfigureAwait(false);
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
 		Assert.IsTrue(errorCollector.Count > 0, "Expected standard error to have content.");
@@ -156,21 +154,17 @@ public class RunCommandTests
 	[TestMethod]
 	public void ExecuteShouldThrowArgumentNullExceptionWhenCommandIsNull()
 	{
-		Assert.ThrowsExactly<ArgumentNullException>(() =>
+		bool didThrow = false;
+		try
 		{
-			try
-			{
-				RunCommand.Execute(null!);
-			}
-			catch (AggregateException ex)
-			{
-				ex.Handle(static inner =>
-				{
-					return inner is ArgumentNullException
-						? throw inner
-						: false;
-				});
-			}
-		});
+			RunCommand.Execute(null!);
+		}
+		catch (AggregateException ex)
+		{
+			Assert.IsInstanceOfType<ArgumentNullException>(ex.InnerException);
+			didThrow = true;
+		}
+
+		Assert.IsTrue(didThrow, "Expected an ArgumentNullException to be thrown.");
 	}
 }

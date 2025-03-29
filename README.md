@@ -1,6 +1,6 @@
 # ktsu.RunCommand
 
-A library that provides an easy way to execute a shell command and output via delegates.
+A library that provides an easy way to execute a shell command and handle the output via delegates. It supports both synchronous and asynchronous execution with customizable output handling.
 
 [![License](https://img.shields.io/github/license/ktsu-dev/RunCommand.svg?label=License&logo=nuget)](LICENSE.md)
 
@@ -24,67 +24,130 @@ Or you can use the NuGet Package Manager in Visual Studio to search for and inst
 
 ## Usage
 
-Here's a simple example of how to use the library. In this example, we execute a shell command and print both standard output and error:
+### Basic Execution
+
+The simplest way to execute a command is to use the `Execute` method:
 
 ```csharp
 using ktsu.RunCommand;
 
 class Program
 {
-    static void Main(string[] args)
+    static void Main()
     {
-        string command = "echo Hello World!";
-
-        RunCommand.Execute(
-            command,
-            onStandardOutput: Console.Write,
-            onStandardError: Console.Write
-        );
+        RunCommand.Execute("echo Hello World!");
     }
 }
-
 ```
 
-NOTE: The delegates will receive undelimited chunks of output. This gives you the flexibility to receive exactly the output the command produces, and handle it as you see fit.
+### Custom Output Handling
 
-You may wish to buffer the output and split it by newline characters manually, but many console commands will output non-printable characters that are intended to be interpreted by the terminal.
-
-If you need to split the output by newline characters, you can use the following as an example:
+To handle the output of the command, you can provide delegates to the `OutputHandler` class:
 
 ```csharp
 using ktsu.RunCommand;
 
 class Program
 {
-    private static string outputBuffer = "";
-    private static string errorBuffer = "";
-
-    static void Main(string[] args)
+    static void Main()
     {
-        string command = "echo Hello World!";
-
         RunCommand.Execute(
-            command,
-            output => ProcessByLine(output, ref outputBuffer, s => Console.WriteLine($"Output: {s}")),
-            error => ProcessByLine(error, ref errorBuffer, s => Console.WriteLine($"Error: {s}"))
+            command: "echo Hello World!",
+            outputHandler: new(
+                onStandardOutput: Console.Write,
+                onStandardError: Console.Write
+            )
         );
-    }
-
-    private static void ProcessByLine(string output, ref string buffer, Action<string> onLineReceived)
-    {
-        buffer += output;
-        while (buffer.Contains('\n'))
-        {
-            string[] split = buffer.Split('\n', 2);
-            buffer = split.Length == 1
-                ? string.Empty
-                : split[1];
-
-            onLineReceived(split[0]);
-        }
     }
 }
 ```
+
+>***NOTE:*** *When using the default OutputHandler, the delegates will receive undelimited chunks of output. This gives you the flexibility to receive exactly the output the command produces, including whitespace and non-printable characters, and handle it as you see fit.*
+
+### Line-by-Line Output Handling
+
+If you prefer to handle the output line by line, you can use the `LineOutputHandler` class:
+
+```csharp
+using ktsu.RunCommand;
+
+class Program
+{
+    static void Main()
+    {
+        RunCommand.Execute(
+            command: "echo Hello World!",
+            outputHandler: new LineOutputHandler(
+                onStandardOutput: line => Console.WriteLine($"Output: {line}"),
+                onStandardError: line => Console.WriteLine($"Error: {line}")
+            )
+        );
+    }
+}
+```
+
+### Asynchronous Execution
+
+All of the above examples can be executed asynchronously by using the `ExecuteAsync` method:
+
+```csharp
+using ktsu.RunCommand;
+
+class Program
+{
+    static async Task Main()
+    {
+        await RunCommand.ExecuteAsync("echo Hello World!");
+    }
+}
+```
+
+## Encoding
+
+By default, the library uses the UTF-8 encoding for the input and output streams. If you need to use a different encoding, you can specify it in the `OutputHandler` or `LineOutputHandler` constructor:
+
+```csharp
+using System.Text;
+using ktsu.RunCommand;
+
+class Program
+{
+    static void Main()
+    {
+        RunCommand.Execute(
+            command: "echo Hello World!",
+            outputHandler: new(
+                onStandardOutput: Console.Write,
+                onStandardError: Console.Write,
+                encoding: Encoding.ASCII
+            )
+        );
+    }
+}
+```
+
+## API Reference
+
+### RunCommand Class
+
+- `Execute(string command)`: Executes a command synchronously.
+- `Execute(string command, OutputHandler outputHandler)`: Executes a command synchronously with custom output handling.
+- `ExecuteAsync(string command)`: Executes a command asynchronously.
+- `ExecuteAsync(string command, OutputHandler outputHandler)`: Executes a command asynchronously with custom output handling.
+
+- ### OutputHandler Class
+
+Processes output in raw chunks:
+
+- `OutputHandler(onStandardOutput, onStandardError)`: Constructor with handlers for output and error streams.
+
+### LineOutputHandler Class
+
+Processes output line by line:
+
+- `LineOutputHandler(onStandardOutput, onStandardError)`: Constructor with handlers for output and error streams.
+
+>***NOTE:*** *The `OutputHandler` classes receive undelimited chunks of output directly from the process stream. The `LineOutputHandler` buffers this output and splits it by newline characters, invoking the delegates for each complete line.*
 
 ## License
 
