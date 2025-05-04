@@ -1,3 +1,7 @@
+// Copyright (c) ktsu.dev
+// All rights reserved.
+// Licensed under the MIT license.
+
 namespace ktsu.RunCommand;
 
 using System.Diagnostics;
@@ -42,10 +46,10 @@ public static class RunCommand
 		ArgumentNullException.ThrowIfNull(command);
 		ArgumentNullException.ThrowIfNull(outputHandler);
 
-		string[] commandParts = command.Split(' ', 2);
+		var commandParts = command.Split(' ', 2);
 
-		string filename = commandParts[0];
-		string arguments = commandParts.Length > 1 ? commandParts[1] : string.Empty;
+		var filename = commandParts[0];
+		var arguments = commandParts.Length > 1 ? commandParts[1] : string.Empty;
 
 		using var process = new Process
 		{
@@ -62,7 +66,7 @@ public static class RunCommand
 			}
 		};
 
-		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+		var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 		if (isWindows)
 		{
 			process.StartInfo.LoadUserProfile = true;

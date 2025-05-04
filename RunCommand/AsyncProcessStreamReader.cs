@@ -1,3 +1,7 @@
+// Copyright (c) ktsu.dev
+// All rights reserved.
+// Licensed under the MIT license.
+
 namespace ktsu.RunCommand;
 
 using System.Diagnostics;
@@ -44,7 +48,7 @@ internal class AsyncProcessStreamReader(Process process, OutputHandler outputHan
 
 	private static void ReadCallback(Task<int> readTask, char[] buffer, Action<string>? onData)
 	{
-		int bytesRead = readTask.Result;
+		var bytesRead = readTask.Result;
 
 		if (bytesRead > 0)
 		{

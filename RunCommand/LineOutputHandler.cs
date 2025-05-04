@@ -1,3 +1,7 @@
+// Copyright (c) ktsu.dev
+// All rights reserved.
+// Licensed under the MIT license.
+
 namespace ktsu.RunCommand;
 
 using System.Text;
@@ -61,7 +65,7 @@ public class LineOutputHandler : OutputHandler
 		buffer += data.ReplaceLineEndings();
 		while (buffer.Contains(Environment.NewLine))
 		{
-			string[] split = buffer.Split(Environment.NewLine, 2);
+			var split = buffer.Split(Environment.NewLine, 2);
 			buffer = split.Length == 1
 				? string.Empty
 				: split[1];
