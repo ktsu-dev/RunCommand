@@ -1,6 +1,6 @@
 MIT License
 
-https://github.com/ktsu-dev/ktsu-dev/RunCommand
+https://github.com/ktsu-dev/RunCommand
 
 Copyright (c) 2023-2025 ktsu-dev
 

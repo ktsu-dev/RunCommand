@@ -2,31 +2,57 @@
 
 Changes since v1.3.0:
 
+- [minor] Improve Git tag retrieval in changelog and version scripts ([@matt-edmondson](https://github.com/matt-edmondson))
 - Remove Directory.Build.props, Directory.Build.targets, and several PowerShell scripts for metadata and version management. Add copyright headers to several source files in the RunCommand namespace. ([@matt-edmondson](https://github.com/matt-edmondson))
 - Update DESCRIPTION.md to clarify shell command execution support and change project SDK references to ktsu.Sdk.Lib and ktsu.Sdk.Test version 1.8.0. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Enhance RunCommand library with output handling features ([@matt-edmondson](https://github.com/matt-edmondson))
+- Initial commit ([@matt-edmondson](https://github.com/matt-edmondson))
+- Add LICENSE template ([@matt-edmondson](https://github.com/matt-edmondson))
 ## v1.3.1-pre.2 (prerelease)
 
 Changes since v1.3.1-pre.1:
 
-- Sync .runsettings ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync .editorconfig ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- [minor] Improve Git tag retrieval in changelog and version scripts ([@matt-edmondson](https://github.com/matt-edmondson))
+- Remove Directory.Build.props, Directory.Build.targets, and several PowerShell scripts for metadata and version management. Add copyright headers to several source files in the RunCommand namespace. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Update DESCRIPTION.md to clarify shell command execution support and change project SDK references to ktsu.Sdk.Lib and ktsu.Sdk.Test version 1.8.0. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Enhance RunCommand library with output handling features ([@matt-edmondson](https://github.com/matt-edmondson))
+- Initial commit ([@matt-edmondson](https://github.com/matt-edmondson))
+- Add LICENSE template ([@matt-edmondson](https://github.com/matt-edmondson))
 ## v1.3.1-pre.1 (prerelease)
 
 Changes since v1.3.0:
 
-- Sync .editorconfig ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- [minor] Improve Git tag retrieval in changelog and version scripts ([@matt-edmondson](https://github.com/matt-edmondson))
+- Remove Directory.Build.props, Directory.Build.targets, and several PowerShell scripts for metadata and version management. Add copyright headers to several source files in the RunCommand namespace. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Update DESCRIPTION.md to clarify shell command execution support and change project SDK references to ktsu.Sdk.Lib and ktsu.Sdk.Test version 1.8.0. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Enhance RunCommand library with output handling features ([@matt-edmondson](https://github.com/matt-edmondson))
+- Initial commit ([@matt-edmondson](https://github.com/matt-edmondson))
+- Add LICENSE template ([@matt-edmondson](https://github.com/matt-edmondson))
 ## v1.3.0 (minor)
 
 Changes since v1.2.0:
 
+- [minor] Improve Git tag retrieval in changelog and version scripts ([@matt-edmondson](https://github.com/matt-edmondson))
+- Remove Directory.Build.props, Directory.Build.targets, and several PowerShell scripts for metadata and version management. Add copyright headers to several source files in the RunCommand namespace. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Update DESCRIPTION.md to clarify shell command execution support and change project SDK references to ktsu.Sdk.Lib and ktsu.Sdk.Test version 1.8.0. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Enhance RunCommand library with output handling features ([@matt-edmondson](https://github.com/matt-edmondson))
+- Initial commit ([@matt-edmondson](https://github.com/matt-edmondson))
 - Add LICENSE template ([@matt-edmondson](https://github.com/matt-edmondson))
 ## v1.2.0 (minor)
 
 Changes since v1.1.0:
 
 - [minor] Improve Git tag retrieval in changelog and version scripts ([@matt-edmondson](https://github.com/matt-edmondson))
+- Remove Directory.Build.props, Directory.Build.targets, and several PowerShell scripts for metadata and version management. Add copyright headers to several source files in the RunCommand namespace. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Update DESCRIPTION.md to clarify shell command execution support and change project SDK references to ktsu.Sdk.Lib and ktsu.Sdk.Test version 1.8.0. ([@matt-edmondson](https://github.com/matt-edmondson))
 - Enhance RunCommand library with output handling features ([@matt-edmondson](https://github.com/matt-edmondson))
+- Initial commit ([@matt-edmondson](https://github.com/matt-edmondson))
+- Add LICENSE template ([@matt-edmondson](https://github.com/matt-edmondson))
 ## v1.1.0 (major)
 
+- [minor] Improve Git tag retrieval in changelog and version scripts ([@matt-edmondson](https://github.com/matt-edmondson))
+- Remove Directory.Build.props, Directory.Build.targets, and several PowerShell scripts for metadata and version management. Add copyright headers to several source files in the RunCommand namespace. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Update DESCRIPTION.md to clarify shell command execution support and change project SDK references to ktsu.Sdk.Lib and ktsu.Sdk.Test version 1.8.0. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Enhance RunCommand library with output handling features ([@matt-edmondson](https://github.com/matt-edmondson))
 - Initial commit ([@matt-edmondson](https://github.com/matt-edmondson))
+- Add LICENSE template ([@matt-edmondson](https://github.com/matt-edmondson))
