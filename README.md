@@ -26,7 +26,7 @@ Or you can use the NuGet Package Manager in Visual Studio to search for and inst
 
 ### Basic Execution
 
-The simplest way to execute a command is to use the `Execute` method:
+The simplest way to execute a command is to use the `Execute` method. All methods return the process exit code:
 
 ```csharp
 using ktsu.RunCommand;
@@ -35,7 +35,16 @@ class Program
 {
     static void Main()
     {
-        RunCommand.Execute("echo Hello World!");
+        int exitCode = RunCommand.Execute("echo Hello World!");
+
+        if (exitCode == 0)
+        {
+            Console.WriteLine("Command executed successfully!");
+        }
+        else
+        {
+            Console.WriteLine($"Command failed with exit code: {exitCode}");
+        }
     }
 }
 ```
@@ -51,18 +60,20 @@ class Program
 {
     static void Main()
     {
-        RunCommand.Execute(
+        int exitCode = RunCommand.Execute(
             command: "echo Hello World!",
             outputHandler: new(
                 onStandardOutput: Console.Write,
                 onStandardError: Console.Write
             )
         );
+
+        Console.WriteLine($"Process exited with code: {exitCode}");
     }
 }
 ```
 
->***NOTE:*** *When using the default OutputHandler, the delegates will receive undelimited chunks of output. This gives you the flexibility to receive exactly the output the command produces, including whitespace and non-printable characters, and handle it as you see fit.*
+> **_NOTE:_** _When using the default OutputHandler, the delegates will receive undelimited chunks of output. This gives you the flexibility to receive exactly the output the command produces, including whitespace and non-printable characters, and handle it as you see fit._
 
 ### Line-by-Line Output Handling
 
@@ -75,13 +86,15 @@ class Program
 {
     static void Main()
     {
-        RunCommand.Execute(
+        int exitCode = RunCommand.Execute(
             command: "echo Hello World!",
             outputHandler: new LineOutputHandler(
                 onStandardOutput: line => Console.WriteLine($"Output: {line}"),
                 onStandardError: line => Console.WriteLine($"Error: {line}")
             )
         );
+
+        Console.WriteLine($"Process exited with code: {exitCode}");
     }
 }
 ```
@@ -97,7 +110,16 @@ class Program
 {
     static async Task Main()
     {
-        await RunCommand.ExecuteAsync("echo Hello World!");
+        int exitCode = await RunCommand.ExecuteAsync("echo Hello World!");
+
+        if (exitCode == 0)
+        {
+            Console.WriteLine("Command executed successfully!");
+        }
+        else
+        {
+            Console.WriteLine($"Command failed with exit code: {exitCode}");
+        }
     }
 }
 ```
@@ -114,7 +136,7 @@ class Program
 {
     static void Main()
     {
-        RunCommand.Execute(
+        int exitCode = RunCommand.Execute(
             command: "echo Hello World!",
             outputHandler: new(
                 onStandardOutput: Console.Write,
@@ -130,24 +152,24 @@ class Program
 
 ### RunCommand Class
 
-- `Execute(string command)`: Executes a command synchronously.
-- `Execute(string command, OutputHandler outputHandler)`: Executes a command synchronously with custom output handling.
-- `ExecuteAsync(string command)`: Executes a command asynchronously.
-- `ExecuteAsync(string command, OutputHandler outputHandler)`: Executes a command asynchronously with custom output handling.
+-   `Execute(string command)`: Executes a command synchronously and returns the process exit code.
+-   `Execute(string command, OutputHandler outputHandler)`: Executes a command synchronously with custom output handling and returns the process exit code.
+-   `ExecuteAsync(string command)`: Executes a command asynchronously and returns a task with the process exit code.
+-   `ExecuteAsync(string command, OutputHandler outputHandler)`: Executes a command asynchronously with custom output handling and returns a task with the process exit code.
 
-- ### OutputHandler Class
+-   ### OutputHandler Class
 
 Processes output in raw chunks:
 
-- `OutputHandler(onStandardOutput, onStandardError)`: Constructor with handlers for output and error streams.
+-   `OutputHandler(onStandardOutput, onStandardError)`: Constructor with handlers for output and error streams.
 
 ### LineOutputHandler Class
 
 Processes output line by line:
 
-- `LineOutputHandler(onStandardOutput, onStandardError)`: Constructor with handlers for output and error streams.
+-   `LineOutputHandler(onStandardOutput, onStandardError)`: Constructor with handlers for output and error streams.
 
->***NOTE:*** *The `OutputHandler` classes receive undelimited chunks of output directly from the process stream. The `LineOutputHandler` buffers this output and splits it by newline characters, invoking the delegates for each complete line.*
+> **_NOTE:_** _The `OutputHandler` classes receive undelimited chunks of output directly from the process stream. The `LineOutputHandler` buffers this output and splits it by newline characters, invoking the delegates for each complete line._
 
 ## License
 

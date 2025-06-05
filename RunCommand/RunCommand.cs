@@ -16,23 +16,25 @@ public static class RunCommand
 	/// Executes a shell command synchronously.
 	/// </summary>
 	/// <param name="command">The command to execute.</param>
-	public static void Execute(string command) =>
-		ExecuteAsync(command).Wait();
+	/// <returns>The exit code of the executed process.</returns>
+	public static int Execute(string command) =>
+		ExecuteAsync(command).Result;
 
 	/// <summary>
 	/// Executes a shell command synchronously with an output handler.
 	/// </summary>
 	/// <param name="command">The command to execute.</param>
 	/// <param name="outputHandler">The handler for processing command output.</param>
-	public static void Execute(string command, OutputHandler outputHandler) =>
-		ExecuteAsync(command, outputHandler).Wait();
+	/// <returns>The exit code of the executed process.</returns>
+	public static int Execute(string command, OutputHandler outputHandler) =>
+		ExecuteAsync(command, outputHandler).Result;
 
 	/// <summary>
 	/// Executes a shell command asynchronously.
 	/// </summary>
 	/// <param name="command">The command to execute.</param>
-	/// <returns>A task representing the asynchronous operation.</returns>
-	public static async Task ExecuteAsync(string command)
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	public static async Task<int> ExecuteAsync(string command)
 		=> await ExecuteAsync(command, new()).ConfigureAwait(false);
 
 	/// <summary>
@@ -40,18 +42,18 @@ public static class RunCommand
 	/// </summary>
 	/// <param name="command">The command to execute.</param>
 	/// <param name="outputHandler">The handler for processing command output.</param>
-	/// <returns>A task representing the asynchronous operation.</returns>
-	public static async Task ExecuteAsync(string command, OutputHandler outputHandler)
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	public static async Task<int> ExecuteAsync(string command, OutputHandler outputHandler)
 	{
 		ArgumentNullException.ThrowIfNull(command);
 		ArgumentNullException.ThrowIfNull(outputHandler);
 
-		var commandParts = command.Split(' ', 2);
+		string[] commandParts = command.Split(' ', 2);
 
-		var filename = commandParts[0];
-		var arguments = commandParts.Length > 1 ? commandParts[1] : string.Empty;
+		string filename = commandParts[0];
+		string arguments = commandParts.Length > 1 ? commandParts[1] : string.Empty;
 
-		using var process = new Process
+		using Process process = new()
 		{
 			StartInfo = new ProcessStartInfo
 			{
@@ -66,7 +68,7 @@ public static class RunCommand
 			}
 		};
 
-		var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 		if (isWindows)
 		{
 			process.StartInfo.LoadUserProfile = true;
@@ -76,9 +78,11 @@ public static class RunCommand
 
 		AsyncProcessStreamReader outputReader = new(process, outputHandler);
 
-		var outputTask = outputReader.Start();
-		var processTask = process.WaitForExitAsync();
+		Task outputTask = outputReader.Start();
+		Task processTask = process.WaitForExitAsync();
 
 		await Task.WhenAll(outputTask, processTask).ConfigureAwait(false);
+
+		return process.ExitCode;
 	}
 }

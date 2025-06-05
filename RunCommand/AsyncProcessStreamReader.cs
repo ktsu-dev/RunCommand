@@ -13,8 +13,8 @@ internal class AsyncProcessStreamReader(Process process, OutputHandler outputHan
 
 	internal async Task Start()
 	{
-		var outputTask = Task.CompletedTask;
-		var errorTask = Task.CompletedTask;
+		Task outputTask = Task.CompletedTask;
+		Task errorTask = Task.CompletedTask;
 
 		// Continuously read until the process has exited.
 		do
@@ -48,7 +48,7 @@ internal class AsyncProcessStreamReader(Process process, OutputHandler outputHan
 
 	private static void ReadCallback(Task<int> readTask, char[] buffer, Action<string>? onData)
 	{
-		var bytesRead = readTask.Result;
+		int bytesRead = readTask.Result;
 
 		if (bytesRead > 0)
 		{

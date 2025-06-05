@@ -1,47 +1,97 @@
+// Copyright (c) ktsu.dev
+// All rights reserved.
+// Licensed under the MIT license.
+
 namespace ktsu.RunCommand.Test;
 
 [TestClass]
 public class RunCommandTests
 {
 	[TestMethod]
-	public void ExecuteShouldExecuteCommand()
+	public void ExecuteShouldExecuteCommandAndReturnExitCode()
 	{
 		string tempFile = Path.GetTempFileName();
-		string destinationFile = Path.Join(Path.GetTempPath(), $"{nameof(RunCommandTests)}.{nameof(ExecuteShouldExecuteCommand)}");
+		string destinationFile = Path.Join(Path.GetTempPath(), $"{nameof(RunCommandTests)}.{nameof(ExecuteShouldExecuteCommandAndReturnExitCode)}");
 
 		File.Delete(destinationFile);
 
 		string command = $"cp {tempFile} {destinationFile}";
 
-		RunCommand.Execute(command);
+		int exitCode = RunCommand.Execute(command);
 
 		Assert.IsTrue(File.Exists(destinationFile), "Expected file to be created.");
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 	}
 
 	[TestMethod]
-	public async Task ExecuteAsyncShouldExecuteCommand()
+	public async Task ExecuteAsyncShouldExecuteCommandAndReturnExitCode()
 	{
 		string tempFile = Path.GetTempFileName();
-		string destinationFile = Path.Join(Path.GetTempPath(), $"{nameof(RunCommandTests)}.{nameof(ExecuteShouldExecuteCommand)}");
+		string destinationFile = Path.Join(Path.GetTempPath(), $"{nameof(RunCommandTests)}.{nameof(ExecuteAsyncShouldExecuteCommandAndReturnExitCode)}");
 
 		File.Delete(destinationFile);
 
 		string command = $"cp {tempFile} {destinationFile}";
 
-		await RunCommand.ExecuteAsync(command).ConfigureAwait(false);
+		int exitCode = await RunCommand.ExecuteAsync(command).ConfigureAwait(false);
 
 		Assert.IsTrue(File.Exists(destinationFile), "Expected file to be created.");
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 	}
 
 	[TestMethod]
-	public void ExecuteShouldCaptureStandardOutput()
+	public void ExecuteShouldReturnSuccessExitCodeForValidCommand()
 	{
-		var outputCollector = new List<string>();
-
 		// Using dotnet should be available in environments with .NET installed.
-		string command = "dotnet";
+		string command = "dotnet --version";
 
-		RunCommand.Execute(command, new(output =>
+		int exitCode = RunCommand.Execute(command);
+
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldReturnSuccessExitCodeForValidCommand()
+	{
+		// Using dotnet should be available in environments with .NET installed.
+		string command = "dotnet --version";
+
+		int exitCode = await RunCommand.ExecuteAsync(command).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
+	}
+
+	[TestMethod]
+	public void ExecuteShouldReturnNonZeroExitCodeForInvalidCommand()
+	{
+		// Using a command that should fail.
+		string command = "dotnet --versionz";
+
+		int exitCode = RunCommand.Execute(command);
+
+		Assert.AreNotEqual(0, exitCode, "Expected exit code to be non-zero for failed command.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldReturnNonZeroExitCodeForInvalidCommand()
+	{
+		// Using a command that should fail.
+		string command = "dotnet --versionz";
+
+		int exitCode = await RunCommand.ExecuteAsync(command).ConfigureAwait(false);
+
+		Assert.AreNotEqual(0, exitCode, "Expected exit code to be non-zero for failed command.");
+	}
+
+	[TestMethod]
+	public void ExecuteShouldCaptureStandardOutputAndReturnExitCode()
+	{
+		List<string> outputCollector = [];
+
+		// Using dotnet --version should be available in environments with .NET installed.
+		string command = "dotnet --version";
+
+		int exitCode = RunCommand.Execute(command, new(output =>
 		{
 			if (!string.IsNullOrWhiteSpace(output))
 			{
@@ -50,17 +100,18 @@ public class RunCommandTests
 		}));
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 	}
 
 	[TestMethod]
-	public async Task ExecuteAsyncShouldCaptureStandardOutput()
+	public async Task ExecuteAsyncShouldCaptureStandardOutputAndReturnExitCode()
 	{
-		var outputCollector = new List<string>();
+		List<string> outputCollector = [];
 
-		// Using dotnet should be available in environments with .NET installed.
-		string command = "dotnet";
+		// Using dotnet --version should be available in environments with .NET installed.
+		string command = "dotnet --version";
 
-		await RunCommand.ExecuteAsync(command, new(output =>
+		int exitCode = await RunCommand.ExecuteAsync(command, new(output =>
 		{
 			if (!string.IsNullOrWhiteSpace(output))
 			{
@@ -69,13 +120,14 @@ public class RunCommandTests
 		})).ConfigureAwait(false);
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 	}
 
 	[TestMethod]
-	public void ExecuteShouldCaptureStandardOutputAndStandardError()
+	public void ExecuteShouldCaptureStandardOutputAndStandardErrorWithExitCode()
 	{
-		var outputCollector = new List<string>();
-		var errorCollector = new List<string>();
+		List<string> outputCollector = [];
+		List<string> errorCollector = [];
 
 		void onStandardOutput(string output)
 		{
@@ -93,29 +145,31 @@ public class RunCommandTests
 			}
 		}
 
-		// Using dotnet should be available in environments with .NET installed.
-		string command = "dotnet";
-		RunCommand.Execute(command, new(onStandardOutput, onStandardError));
+		// Using dotnet --version should be available in environments with .NET installed.
+		string command = "dotnet --version";
+		int exitCode = RunCommand.Execute(command, new(onStandardOutput, onStandardError));
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
 		Assert.AreEqual(0, errorCollector.Count, "Expected standard error to be empty.");
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 
 		outputCollector.Clear();
 		errorCollector.Clear();
 
 		// Using a command that should fail.
 		command = "dotnet --versionz";
-		RunCommand.Execute(command, new(onStandardOutput, onStandardError));
+		exitCode = RunCommand.Execute(command, new(onStandardOutput, onStandardError));
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
 		Assert.IsTrue(errorCollector.Count > 0, "Expected standard error to have content.");
+		Assert.AreNotEqual(0, exitCode, "Expected exit code to be non-zero for failed command.");
 	}
 
 	[TestMethod]
-	public async Task ExecuteAsyncShouldCaptureStandardOutputAndStandardError()
+	public async Task ExecuteAsyncShouldCaptureStandardOutputAndStandardErrorWithExitCode()
 	{
-		var outputCollector = new List<string>();
-		var errorCollector = new List<string>();
+		List<string> outputCollector = [];
+		List<string> errorCollector = [];
 
 		void onStandardOutput(string output)
 		{
@@ -133,22 +187,24 @@ public class RunCommandTests
 			}
 		}
 
-		// Using dotnet should be available in environments with .NET installed.
-		string command = "dotnet";
-		await RunCommand.ExecuteAsync(command, new(onStandardOutput, onStandardError)).ConfigureAwait(false);
+		// Using dotnet --version should be available in environments with .NET installed.
+		string command = "dotnet --version";
+		int exitCode = await RunCommand.ExecuteAsync(command, new(onStandardOutput, onStandardError)).ConfigureAwait(false);
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
 		Assert.AreEqual(0, errorCollector.Count, "Expected standard error to be empty.");
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 
 		outputCollector.Clear();
 		errorCollector.Clear();
 
 		// Using a command that should fail.
 		command = "dotnet --versionz";
-		await RunCommand.ExecuteAsync(command, new(onStandardOutput, onStandardError)).ConfigureAwait(false);
+		exitCode = await RunCommand.ExecuteAsync(command, new(onStandardOutput, onStandardError)).ConfigureAwait(false);
 
 		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
 		Assert.IsTrue(errorCollector.Count > 0, "Expected standard error to have content.");
+		Assert.AreNotEqual(0, exitCode, "Expected exit code to be non-zero for failed command.");
 	}
 
 	[TestMethod]
@@ -157,7 +213,7 @@ public class RunCommandTests
 		bool didThrow = false;
 		try
 		{
-			RunCommand.Execute(null!);
+			int exitCode = RunCommand.Execute(null!);
 		}
 		catch (AggregateException ex)
 		{

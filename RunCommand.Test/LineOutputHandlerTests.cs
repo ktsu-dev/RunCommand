@@ -1,3 +1,7 @@
+// Copyright (c) ktsu.dev
+// All rights reserved.
+// Licensed under the MIT license.
+
 namespace ktsu.RunCommand.Test;
 
 [TestClass]
@@ -11,7 +15,7 @@ public class LineOutputHandlerTests
 		string[] expectedLines = ["Line1", "Line2", "Line3"];
 		int index = 0;
 
-		var handler = new LineOutputHandler(
+		LineOutputHandler handler = new(
 			onStandardOutput: line =>
 			{
 				Assert.AreEqual(expectedLines[index], line);
@@ -33,7 +37,7 @@ public class LineOutputHandlerTests
 		string[] expectedLines = ["Error1", "Error2", "Error3"];
 		int index = 0;
 
-		var handler = new LineOutputHandler(
+		LineOutputHandler handler = new(
 			onStandardError: line =>
 			{
 				Assert.AreEqual(expectedLines[index], line);
@@ -55,7 +59,7 @@ public class LineOutputHandlerTests
 		string[] expectedLines = ["Line1", "Line2"];
 		int index = 0;
 
-		var handler = new LineOutputHandler(
+		LineOutputHandler handler = new(
 			onStandardOutput: line =>
 			{
 				Assert.AreEqual(expectedLines[index], line);
@@ -78,7 +82,7 @@ public class LineOutputHandlerTests
 		string[] expectedLines = ["Error1", "Error2"];
 		int index = 0;
 
-		var handler = new LineOutputHandler(
+		LineOutputHandler handler = new(
 			onStandardError: line =>
 			{
 				Assert.AreEqual(expectedLines[index], line);

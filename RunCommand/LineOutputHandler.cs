@@ -65,7 +65,7 @@ public class LineOutputHandler : OutputHandler
 		buffer += data.ReplaceLineEndings();
 		while (buffer.Contains(Environment.NewLine))
 		{
-			var split = buffer.Split(Environment.NewLine, 2);
+			string[] split = buffer.Split(Environment.NewLine, 2);
 			buffer = split.Length == 1
 				? string.Empty
 				: split[1];
