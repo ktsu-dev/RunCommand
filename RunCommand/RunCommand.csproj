@@ -1,2 +1,4 @@
-﻿<Project Sdk="ktsu.Sdk.Lib">
+﻿<Project>
+  <Sdk Name="Microsoft.NET.Sdk" />
+  <Sdk Name="ktsu.Sdk" />
 </Project>

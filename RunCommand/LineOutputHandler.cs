@@ -39,7 +39,7 @@ public class LineOutputHandler : OutputHandler
 	/// <exception cref="ArgumentNullException">Thrown when the data is null.</exception>
 	internal override void HandleStandardOutputData(string data)
 	{
-		ArgumentNullException.ThrowIfNull(data);
+		Guard.NotNull(data);
 		ProcessDataByLine(data, ref outputBuffer, OnStandardOutput);
 	}
 
@@ -50,7 +50,7 @@ public class LineOutputHandler : OutputHandler
 	/// <exception cref="ArgumentNullException">Thrown when the data is null.</exception>
 	internal override void HandleStandardErrorData(string data)
 	{
-		ArgumentNullException.ThrowIfNull(data);
+		Guard.NotNull(data);
 		ProcessDataByLine(data, ref errorBuffer, OnStandardError);
 	}
 

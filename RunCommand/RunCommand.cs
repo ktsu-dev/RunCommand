@@ -45,8 +45,8 @@ public static class RunCommand
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
 	public static async Task<int> ExecuteAsync(string command, OutputHandler outputHandler)
 	{
-		ArgumentNullException.ThrowIfNull(command);
-		ArgumentNullException.ThrowIfNull(outputHandler);
+		Guard.NotNull(command);
+		Guard.NotNull(outputHandler);
 
 		string[] commandParts = command.Split(' ', 2);
 
