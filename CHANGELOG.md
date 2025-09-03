@@ -1,3 +1,6 @@
+## v1.3.2
+
+No significant changes detected since v1.3.2.
 ## v1.3.2 (patch)
 
 Changes since v1.3.1:
@@ -6,7 +9,7 @@ Changes since v1.3.1:
 - [patch] Force patch ([@matt-edmondson](https://github.com/matt-edmondson))
 ## v1.3.2-pre.1 (prerelease)
 
-Changes since v1.3.1:
+Incremental prerelease update.
 ## v1.3.1 (patch)
 
 Changes since v1.3.0:
