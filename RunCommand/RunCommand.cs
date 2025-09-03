@@ -30,7 +30,7 @@ public static class RunCommand
 		ExecuteAsync(command, outputHandler).Result;
 
 	/// <summary>
-	/// Executes a shell command asynchronously.
+	/// Executes a shell command asynchronously
 	/// </summary>
 	/// <param name="command">The command to execute.</param>
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
