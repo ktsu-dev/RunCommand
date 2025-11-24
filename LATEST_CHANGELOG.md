@@ -1,6 +1,5 @@
-## v1.3.3-pre.3 (prerelease)
+## v1.3.3-pre.4 (prerelease)
 
-Changes since v1.3.3-pre.2:
+Changes since v1.3.3-pre.3:
 
-- Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync scripts\update-winget-manifests.ps1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
