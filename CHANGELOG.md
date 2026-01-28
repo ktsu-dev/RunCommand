@@ -1,5 +1,8 @@
 ## v1.3.4-pre.1 (prerelease)
 
+Incremental prerelease update.
+## v1.3.4-pre.1 (prerelease)
+
 Changes since v1.3.3:
 
 - Sync .gitignore ([@ktsu[bot]](https://github.com/ktsu[bot]))
