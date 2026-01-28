@@ -6,7 +6,7 @@ namespace ktsu.RunCommand;
 
 using System.Diagnostics;
 
-internal class AsyncProcessStreamReader(Process process, OutputHandler outputHandler)
+internal sealed class AsyncProcessStreamReader(Process process, OutputHandler outputHandler)
 {
 	private readonly char[] outputBuffer = new char[4096];
 	private readonly char[] errorBuffer = new char[4096];
