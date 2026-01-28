@@ -1,5 +1,7 @@
-## v1.3.3 (patch)
+## v1.3.4-pre.1 (prerelease)
 
-Changes since v1.3.2:
+Changes since v1.3.3:
 
-- Migrate to dotnet 10 ([@matt-edmondson](https://github.com/matt-edmondson))
+- Sync .gitignore ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
