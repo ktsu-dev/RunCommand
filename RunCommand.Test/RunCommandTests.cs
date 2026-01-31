@@ -4,9 +4,16 @@
 
 namespace ktsu.RunCommand.Test;
 
+using System.Runtime.InteropServices;
+
 [TestClass]
 public class RunCommandTests
 {
+	private static string GetCopyCommand(string source, string destination) =>
+		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+			? $"cmd /c copy \"{source}\" \"{destination}\""
+			: $"cp {source} {destination}";
+
 	[TestMethod]
 	public void ExecuteShouldExecuteCommandAndReturnExitCode()
 	{
@@ -15,7 +22,7 @@ public class RunCommandTests
 
 		File.Delete(destinationFile);
 
-		string command = $"cp {tempFile} {destinationFile}";
+		string command = GetCopyCommand(tempFile, destinationFile);
 
 		int exitCode = RunCommand.Execute(command);
 
@@ -31,7 +38,7 @@ public class RunCommandTests
 
 		File.Delete(destinationFile);
 
-		string command = $"cp {tempFile} {destinationFile}";
+		string command = GetCopyCommand(tempFile, destinationFile);
 
 		int exitCode = await RunCommand.ExecuteAsync(command).ConfigureAwait(false);
 
@@ -99,7 +106,7 @@ public class RunCommandTests
 			}
 		}));
 
-		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
+		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
 		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 	}
 
@@ -119,7 +126,7 @@ public class RunCommandTests
 			}
 		})).ConfigureAwait(false);
 
-		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
+		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
 		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 	}
 
@@ -149,8 +156,8 @@ public class RunCommandTests
 		string command = "dotnet --version";
 		int exitCode = RunCommand.Execute(command, new(onStandardOutput, onStandardError));
 
-		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
-		Assert.AreEqual(0, errorCollector.Count, "Expected standard error to be empty.");
+		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
+		Assert.IsEmpty(errorCollector, "Expected standard error to be empty.");
 		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 
 		outputCollector.Clear();
@@ -160,8 +167,8 @@ public class RunCommandTests
 		command = "dotnet --versionz";
 		exitCode = RunCommand.Execute(command, new(onStandardOutput, onStandardError));
 
-		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
-		Assert.IsTrue(errorCollector.Count > 0, "Expected standard error to have content.");
+		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
+		Assert.IsNotEmpty(errorCollector, "Expected standard error to have content.");
 		Assert.AreNotEqual(0, exitCode, "Expected exit code to be non-zero for failed command.");
 	}
 
@@ -191,8 +198,8 @@ public class RunCommandTests
 		string command = "dotnet --version";
 		int exitCode = await RunCommand.ExecuteAsync(command, new(onStandardOutput, onStandardError)).ConfigureAwait(false);
 
-		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
-		Assert.AreEqual(0, errorCollector.Count, "Expected standard error to be empty.");
+		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
+		Assert.IsEmpty(errorCollector, "Expected standard error to be empty.");
 		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 
 		outputCollector.Clear();
@@ -202,8 +209,8 @@ public class RunCommandTests
 		command = "dotnet --versionz";
 		exitCode = await RunCommand.ExecuteAsync(command, new(onStandardOutput, onStandardError)).ConfigureAwait(false);
 
-		Assert.IsTrue(outputCollector.Count > 0, "Expected standard output to have content.");
-		Assert.IsTrue(errorCollector.Count > 0, "Expected standard error to have content.");
+		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
+		Assert.IsNotEmpty(errorCollector, "Expected standard error to have content.");
 		Assert.AreNotEqual(0, exitCode, "Expected exit code to be non-zero for failed command.");
 	}
 

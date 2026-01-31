@@ -48,7 +48,7 @@ public class OutputHandler
 	/// <exception cref="ArgumentNullException">Thrown when the data is null.</exception>
 	internal virtual void HandleStandardOutputData(string data)
 	{
-		Guard.NotNull(data);
+		Ensure.NotNull(data);
 		OnStandardOutput?.Invoke(data);
 	}
 
@@ -59,7 +59,7 @@ public class OutputHandler
 	/// <exception cref="ArgumentNullException">Thrown when the data is null.</exception>
 	internal virtual void HandleStandardErrorData(string data)
 	{
-		Guard.NotNull(data);
+		Ensure.NotNull(data);
 		OnStandardError?.Invoke(data);
 	}
 }

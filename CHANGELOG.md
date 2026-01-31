@@ -1,12 +1,19 @@
-## v1.3.3-pre.5 (prerelease)
+## v1.3.4
 
-Changes since v1.3.3-pre.4:
+No significant changes detected since v1.3.4.
+## v1.3.4 (patch)
 
-- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync .github\workflows\update-sdks.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync .gitignore ([@ktsu[bot]](https://github.com/ktsu[bot]))
+Changes since v1.3.3:
+
+- Remove .github\workflows\project.yml ([@matt-edmondson](https://github.com/matt-edmondson))
+## v1.3.4-pre.1 (prerelease)
+
+Incremental prerelease update.
+## v1.3.3 (patch)
+
+Changes since v1.3.2:
+
+- Migrate to dotnet 10 ([@matt-edmondson](https://github.com/matt-edmondson))
 ## v1.3.3-pre.4 (prerelease)
 
 Changes since v1.3.3-pre.3:
@@ -26,13 +33,7 @@ Changes since v1.3.3-pre.1:
 - Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
 ## v1.3.3-pre.1 (prerelease)
 
-Changes since v1.3.2:
-
-- Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync .gitattributes ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync scripts\update-winget-manifests.ps1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync .runsettings ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
+Incremental prerelease update.
 ## v1.3.2 (patch)
 
 Changes since v1.3.1:
