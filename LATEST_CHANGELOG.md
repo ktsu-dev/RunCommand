@@ -1,5 +1,3 @@
-## v1.3.5 (patch)
+## v1.3.6-pre.1 (prerelease)
 
-Changes since v1.3.4:
-
-- Add CLAUDE.md for project guidance and documentation ([@matt-edmondson](https://github.com/matt-edmondson))
+Incremental prerelease update.
