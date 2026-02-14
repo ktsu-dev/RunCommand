@@ -1,15 +1,31 @@
+## v1.3.6 (patch)
+
+Changes since v1.3.5:
+
+- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync scripts\update-winget-manifests.ps1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync scripts\update-winget-manifests.ps1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync COPYRIGHT.md ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.6-pre.5 (prerelease)
 
 Changes since v1.3.6-pre.4:
 
-- Sync scripts\update-winget-manifests.ps1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
-## v1.3.6-pre.5 (prerelease)
-
-Changes since v1.3.6-pre.4:
-
 - Sync scripts\update-winget-manifests.ps1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
-- Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.6-pre.4 (prerelease)
 
 Changes since v1.3.6-pre.3:
@@ -17,20 +33,23 @@ Changes since v1.3.6-pre.3:
 - Sync scripts\update-winget-manifests.ps1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.6-pre.3 (prerelease)
 
 Changes since v1.3.6-pre.2:
 
-- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.6-pre.2 (prerelease)
 
 Changes since v1.3.6-pre.1:
 
-- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.6-pre.1 (prerelease)
 
 Changes since v1.3.5:
@@ -38,82 +57,105 @@ Changes since v1.3.5:
 - Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync COPYRIGHT.md ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.5 (patch)
 
 Changes since v1.3.4:
 
 - Add CLAUDE.md for project guidance and documentation ([@matt-edmondson](https://github.com/matt-edmondson))
+
 ## v1.3.4 (patch)
 
 Changes since v1.3.3:
 
 - Remove .github\workflows\project.yml ([@matt-edmondson](https://github.com/matt-edmondson))
+- Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .gitignore ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.4-pre.1 (prerelease)
 
-Incremental prerelease update.
+No significant changes detected since v1.3.4.
+
 ## v1.3.3 (patch)
 
 Changes since v1.3.2:
 
 - Migrate to dotnet 10 ([@matt-edmondson](https://github.com/matt-edmondson))
+
 ## v1.3.3-pre.4 (prerelease)
 
 Changes since v1.3.3-pre.3:
 
 - Sync scripts\update-winget-manifests.ps1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.3-pre.3 (prerelease)
 
 Changes since v1.3.3-pre.2:
 
 - Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.3-pre.2 (prerelease)
 
 Changes since v1.3.3-pre.1:
 
-- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.3-pre.1 (prerelease)
 
-Incremental prerelease update.
+No significant changes detected since v1.3.3.
+
 ## v1.3.2 (patch)
 
 Changes since v1.3.1:
 
 - [patch] Force patch ([@matt-edmondson](https://github.com/matt-edmondson))
 - [patch] Force patch ([@matt-edmondson](https://github.com/matt-edmondson))
+- Update package versions in Directory.Packages.props, enhance PSBuild.psm1 for coverage and release processes, and adjust .runsettings for output directory. Clean up whitespace in multiple files. ([@matt-edmondson](https://github.com/matt-edmondson))
+
 ## v1.3.2-pre.1 (prerelease)
 
-Incremental prerelease update.
+No significant changes detected since v1.3.2.
+
 ## v1.3.1 (patch)
 
 Changes since v1.3.0:
 
-- Remove Directory.Build.props, Directory.Build.targets, and several PowerShell scripts for metadata and version management. Add copyright headers to several source files in the RunCommand namespace. ([@matt-edmondson](https://github.com/matt-edmondson))
-- Update DESCRIPTION.md to clarify shell command execution support and change project SDK references to ktsu.Sdk.Lib and ktsu.Sdk.Test version 1.8.0. ([@matt-edmondson](https://github.com/matt-edmondson))
 - Update .editorconfig settings, enhance RunCommand functionality to return exit codes, and add SonarLint configuration ([@matt-edmondson](https://github.com/matt-edmondson))
 - Add project configuration files and update SDK references ([@matt-edmondson](https://github.com/matt-edmondson))
+- Remove Directory.Build.props, Directory.Build.targets, and several PowerShell scripts for metadata and version management. Add copyright headers to several source files in the RunCommand namespace. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Update DESCRIPTION.md to clarify shell command execution support and change project SDK references to ktsu.Sdk.Lib and ktsu.Sdk.Test version 1.8.0. ([@matt-edmondson](https://github.com/matt-edmondson))
+
 ## v1.3.1-pre.2 (prerelease)
 
 Changes since v1.3.1-pre.1:
 
-- Sync .runsettings ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync .editorconfig ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .runsettings ([@ktsu[bot]](https://github.com/ktsu[bot]))
+
 ## v1.3.1-pre.1 (prerelease)
 
-Incremental prerelease update.
+No significant changes detected since v1.3.1.
+
 ## v1.3.0 (minor)
 
 Changes since v1.2.0:
 
 - Add LICENSE template ([@matt-edmondson](https://github.com/matt-edmondson))
+
 ## v1.2.0 (minor)
 
 Changes since v1.1.0:
 
 - [minor] Improve Git tag retrieval in changelog and version scripts ([@matt-edmondson](https://github.com/matt-edmondson))
 - Enhance RunCommand library with output handling features ([@matt-edmondson](https://github.com/matt-edmondson))
+
 ## v1.1.0 (major)
 
 - Initial commit ([@matt-edmondson](https://github.com/matt-edmondson))
+
