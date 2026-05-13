@@ -98,7 +98,7 @@ public class RunCommandTests
 		// Using dotnet --version should be available in environments with .NET installed.
 		string command = "dotnet --version";
 
-		int exitCode = RunCommand.Execute(command, new(output =>
+		int exitCode = RunCommand.Execute(command, new OutputHandler(output =>
 		{
 			if (!string.IsNullOrWhiteSpace(output))
 			{
@@ -118,7 +118,7 @@ public class RunCommandTests
 		// Using dotnet --version should be available in environments with .NET installed.
 		string command = "dotnet --version";
 
-		int exitCode = await RunCommand.ExecuteAsync(command, new(output =>
+		int exitCode = await RunCommand.ExecuteAsync(command, new OutputHandler(output =>
 		{
 			if (!string.IsNullOrWhiteSpace(output))
 			{
@@ -154,7 +154,7 @@ public class RunCommandTests
 
 		// Using dotnet --version should be available in environments with .NET installed.
 		string command = "dotnet --version";
-		int exitCode = RunCommand.Execute(command, new(onStandardOutput, onStandardError));
+		int exitCode = RunCommand.Execute(command, new OutputHandler(onStandardOutput, onStandardError));
 
 		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
 		Assert.IsEmpty(errorCollector, "Expected standard error to be empty.");
@@ -165,7 +165,7 @@ public class RunCommandTests
 
 		// Using a command that should fail.
 		command = "dotnet --versionz";
-		exitCode = RunCommand.Execute(command, new(onStandardOutput, onStandardError));
+		exitCode = RunCommand.Execute(command, new OutputHandler(onStandardOutput, onStandardError));
 
 		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
 		Assert.IsNotEmpty(errorCollector, "Expected standard error to have content.");
@@ -196,7 +196,7 @@ public class RunCommandTests
 
 		// Using dotnet --version should be available in environments with .NET installed.
 		string command = "dotnet --version";
-		int exitCode = await RunCommand.ExecuteAsync(command, new(onStandardOutput, onStandardError)).ConfigureAwait(false);
+		int exitCode = await RunCommand.ExecuteAsync(command, new OutputHandler(onStandardOutput, onStandardError)).ConfigureAwait(false);
 
 		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
 		Assert.IsEmpty(errorCollector, "Expected standard error to be empty.");
@@ -207,7 +207,7 @@ public class RunCommandTests
 
 		// Using a command that should fail.
 		command = "dotnet --versionz";
-		exitCode = await RunCommand.ExecuteAsync(command, new(onStandardOutput, onStandardError)).ConfigureAwait(false);
+		exitCode = await RunCommand.ExecuteAsync(command, new OutputHandler(onStandardOutput, onStandardError)).ConfigureAwait(false);
 
 		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
 		Assert.IsNotEmpty(errorCollector, "Expected standard error to have content.");
@@ -255,7 +255,7 @@ public class RunCommandTests
 	{
 		List<string> outputCollector = [];
 
-		int exitCode = RunCommand.Execute("dotnet --version", new(output =>
+		int exitCode = RunCommand.Execute("dotnet --version", new OutputHandler(output =>
 		{
 			if (!string.IsNullOrWhiteSpace(output))
 			{
@@ -272,7 +272,7 @@ public class RunCommandTests
 	{
 		List<string> outputCollector = [];
 
-		int exitCode = await RunCommand.ExecuteAsync("dotnet --version", new(output =>
+		int exitCode = await RunCommand.ExecuteAsync("dotnet --version", new OutputHandler(output =>
 		{
 			if (!string.IsNullOrWhiteSpace(output))
 			{
