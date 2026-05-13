@@ -135,15 +135,14 @@ public static class RunCommand
 		if (useElevation)
 		{
 			await process.WaitForExitAsync().ConfigureAwait(false);
-			return process.ExitCode;
 		}
-
-		AsyncProcessStreamReader outputReader = new(process, outputHandler);
-
-		Task outputTask = outputReader.Start();
-		Task processTask = process.WaitForExitAsync();
-
-		await Task.WhenAll(outputTask, processTask).ConfigureAwait(false);
+		else
+		{
+			AsyncProcessStreamReader outputReader = new(process, outputHandler);
+			Task outputTask = outputReader.Start();
+			Task processTask = process.WaitForExitAsync();
+			await Task.WhenAll(outputTask, processTask).ConfigureAwait(false);
+		}
 
 		return process.ExitCode;
 	}
