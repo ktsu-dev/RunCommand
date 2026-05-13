@@ -214,6 +214,76 @@ public class RunCommandTests
 		Assert.AreNotEqual(0, exitCode, "Expected exit code to be non-zero for failed command.");
 	}
 
+	[DataTestMethod]
+	[DataRow(Elevation.Default)]
+	[DataRow(Elevation.Elevated)]
+	public void ExecuteWithElevationShouldReturnExitCode(Elevation elevation)
+	{
+		// On non-Windows platforms Elevation.Elevated is a documented no-op, so both
+		// values should run the command normally and return a zero exit code.
+		// On Windows, Elevation.Elevated would trigger a UAC prompt, so only assert
+		// the no-op case here.
+		if (elevation == Elevation.Elevated && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Skipping elevated test on Windows to avoid UAC prompt.");
+			return;
+		}
+
+		int exitCode = RunCommand.Execute("dotnet --version", elevation);
+
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
+	}
+
+	[DataTestMethod]
+	[DataRow(Elevation.Default)]
+	[DataRow(Elevation.Elevated)]
+	public async Task ExecuteAsyncWithElevationShouldReturnExitCode(Elevation elevation)
+	{
+		if (elevation == Elevation.Elevated && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Skipping elevated test on Windows to avoid UAC prompt.");
+			return;
+		}
+
+		int exitCode = await RunCommand.ExecuteAsync("dotnet --version", elevation).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
+	}
+
+	[TestMethod]
+	public void ExecuteWithDefaultElevationAndHandlerShouldCaptureOutput()
+	{
+		List<string> outputCollector = [];
+
+		int exitCode = RunCommand.Execute("dotnet --version", new(output =>
+		{
+			if (!string.IsNullOrWhiteSpace(output))
+			{
+				outputCollector.Add(output);
+			}
+		}), Elevation.Default);
+
+		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncWithDefaultElevationAndHandlerShouldCaptureOutput()
+	{
+		List<string> outputCollector = [];
+
+		int exitCode = await RunCommand.ExecuteAsync("dotnet --version", new(output =>
+		{
+			if (!string.IsNullOrWhiteSpace(output))
+			{
+				outputCollector.Add(output);
+			}
+		}), Elevation.Default).ConfigureAwait(false);
+
+		Assert.IsNotEmpty(outputCollector, "Expected standard output to have content.");
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
+	}
+
 	[TestMethod]
 	public void ExecuteShouldThrowArgumentNullExceptionWhenCommandIsNull()
 	{

@@ -124,6 +124,28 @@ class Program
 }
 ```
 
+## Elevation (Windows)
+
+If you need to run a command with elevated privileges, pass `Elevation.Elevated`. On Windows this launches the process with the `runas` verb, which triggers a UAC prompt:
+
+```csharp
+using ktsu.RunCommand;
+
+class Program
+{
+    static void Main()
+    {
+        int exitCode = RunCommand.Execute("powershell -Command \"Get-Service\"", Elevation.Elevated);
+
+        Console.WriteLine($"Process exited with code: {exitCode}");
+    }
+}
+```
+
+> **_NOTE:_** _Output redirection is incompatible with `runas`, so an `OutputHandler` passed alongside `Elevation.Elevated` will **not** be invoked. You still get the process exit code._
+
+On non-Windows platforms `Elevation.Elevated` is a no-op — prefix your command with `sudo` yourself if you need elevation there.
+
 ## Encoding
 
 By default, the library uses the UTF-8 encoding for the input and output streams. If you need to use a different encoding, you can specify it in the `OutputHandler` or `LineOutputHandler` constructor:
@@ -154,8 +176,17 @@ class Program
 
 -   `Execute(string command)`: Executes a command synchronously and returns the process exit code.
 -   `Execute(string command, OutputHandler outputHandler)`: Executes a command synchronously with custom output handling and returns the process exit code.
+-   `Execute(string command, Elevation elevation)`: Executes a command synchronously at the given elevation level.
+-   `Execute(string command, OutputHandler outputHandler, Elevation elevation)`: Executes a command synchronously with custom output handling at the given elevation level.
 -   `ExecuteAsync(string command)`: Executes a command asynchronously and returns a task with the process exit code.
 -   `ExecuteAsync(string command, OutputHandler outputHandler)`: Executes a command asynchronously with custom output handling and returns a task with the process exit code.
+-   `ExecuteAsync(string command, Elevation elevation)`: Executes a command asynchronously at the given elevation level.
+-   `ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation)`: Executes a command asynchronously with custom output handling at the given elevation level.
+
+### Elevation Enum
+
+-   `Elevation.Default`: Run with the current process's privileges (output is captured).
+-   `Elevation.Elevated`: On Windows, launch via the `runas` verb (UAC prompt); output is **not** captured. No-op on non-Windows.
 
 -   ### OutputHandler Class
 
