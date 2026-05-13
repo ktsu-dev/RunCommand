@@ -58,7 +58,7 @@ public static class RunCommand
 	/// <param name="command">The command to execute.</param>
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
 	public static async Task<int> ExecuteAsync(string command)
-		=> await ExecuteAsync(command, new()).ConfigureAwait(false);
+		=> await ExecuteAsync(command, new OutputHandler()).ConfigureAwait(false);
 
 	/// <summary>
 	/// Executes a shell command asynchronously with an output handler.
@@ -139,9 +139,7 @@ public static class RunCommand
 		else
 		{
 			AsyncProcessStreamReader outputReader = new(process, outputHandler);
-			Task outputTask = outputReader.Start();
-			Task processTask = process.WaitForExitAsync();
-			await Task.WhenAll(outputTask, processTask).ConfigureAwait(false);
+			await Task.WhenAll(outputReader.Start(), process.WaitForExitAsync()).ConfigureAwait(false);
 		}
 
 		return process.ExitCode;
