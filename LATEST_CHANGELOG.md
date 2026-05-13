@@ -2,6 +2,7 @@
 
 Changes since v1.3.0:
 
+- Fix overload ambiguity in tests ([@Claude](https://github.com/Claude))
 - Follow-ups for elevation support ([@Claude](https://github.com/Claude))
 - Use single return path in ExecuteAsync ([@Claude](https://github.com/Claude))
 - Add elevation support to RunCommand ([@Claude](https://github.com/Claude))
