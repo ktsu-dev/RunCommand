@@ -1,6 +1,13 @@
-## v1.4.10
+## v1.4.11 (patch)
 
-No significant changes detected since v1.4.10.
+Changes since v1.4.10:
+
+- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .github\dependabot.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync icon.png ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .gitignore ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .gitattributes ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
 
 ## v1.4.10 (patch)
 
