@@ -1,6 +1,8 @@
-## v1.4.11
+## v1.4.12 (patch)
 
-No significant changes detected since v1.4.11.
+Changes since v1.4.11:
+
+- chore: remove SourceLink references and fix test attributes ([@matt-edmondson](https://github.com/matt-edmondson))
 
 ## v1.4.11 (patch)
 
