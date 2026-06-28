@@ -214,7 +214,7 @@ public class RunCommandTests
 		Assert.AreNotEqual(0, exitCode, "Expected exit code to be non-zero for failed command.");
 	}
 
-	[DataTestMethod]
+	[TestMethod]
 	[DataRow(Elevation.Default)]
 	[DataRow(Elevation.Elevated)]
 	public void ExecuteWithElevationShouldReturnExitCode(Elevation elevation)
@@ -234,7 +234,7 @@ public class RunCommandTests
 		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
 	}
 
-	[DataTestMethod]
+	[TestMethod]
 	[DataRow(Elevation.Default)]
 	[DataRow(Elevation.Elevated)]
 	public async Task ExecuteAsyncWithElevationShouldReturnExitCode(Elevation elevation)

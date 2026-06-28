@@ -10,8 +10,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\RunCommand\RunCommand.csproj" />
-    <PackageReference Update="Microsoft.SourceLink.AzureRepos.Git" />
-    <PackageReference Update="Microsoft.SourceLink.GitHub" />
   </ItemGroup>
 
 </Project>
