@@ -1,6 +1,6 @@
-## v1.4.19 (patch)
+## v1.4.20 (patch)
 
-Changes since v1.4.18:
+Changes since v1.4.19:
 
-- Bump Polyfill from 10.11.2 to 11.0.0 ([@dependabot[bot]](https://github.com/dependabot[bot]))
+- Bump Polyfill from 11.0.0 to 11.0.1 ([@dependabot[bot]](https://github.com/dependabot[bot]))
 
