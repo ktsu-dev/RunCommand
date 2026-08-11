@@ -1,9 +1,8 @@
-// Copyright (c) ktsu.dev
-// All rights reserved.
-// Licensed under the MIT license.
+// Copyright (c) 2023-2026 ktsu-dev contributors
 
 namespace ktsu.RunCommand.Test;
 
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 [TestClass]
@@ -299,5 +298,97 @@ public class RunCommandTests
 		}
 
 		Assert.IsTrue(didThrow, "Expected an ArgumentNullException to be thrown.");
+	}
+
+	/// <summary>
+	/// Returns a command that reads a single file, as an executable plus separate arguments. Both
+	/// tools exit 0 only when they can open the file, so a path that was wrongly split on its
+	/// spaces produces a non-zero exit code.
+	/// </summary>
+	private static (string FileName, string[] Arguments) GetReadFileCommand(string path) =>
+		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+			? ("certutil", ["-hashfile", path, "MD5"])
+			: ("cat", [path]);
+
+	/// <summary>
+	/// Returns a command that runs for long enough to be cancelled mid-flight.
+	/// </summary>
+	private static (string FileName, string[] Arguments) GetSleepCommand() =>
+		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+			? ("ping", ["-n", "30", "127.0.0.1"])
+			: ("sleep", ["30"]);
+
+	// The caller name keeps each test on its own file, since tests run in parallel and would
+	// otherwise collide writing a shared path.
+	private static string WriteTempFileInDirectoryWithSpaces(string content, [CallerMemberName] string caller = "")
+	{
+		string directory = Path.Join(Path.GetTempPath(), $"{nameof(RunCommandTests)} with spaces");
+		_ = Directory.CreateDirectory(directory);
+		string path = Path.Join(directory, $"needle file {caller}.txt");
+
+		// The trailing newline matters: LineOutputHandler only raises complete lines, so a match
+		// that the search tool prints without a line terminator would sit unflushed in its buffer.
+		File.WriteAllText(path, content + Environment.NewLine);
+		return path;
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldPassArgumentContainingSpacesAsSingleArgument()
+	{
+		string path = WriteTempFileInDirectoryWithSpaces("hello");
+		(string fileName, string[] arguments) = GetReadFileCommand(path);
+
+		int exitCode = await RunCommand.ExecuteAsync(fileName, arguments).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode, "Expected the path with spaces to arrive as one argument.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldFailWhenArgumentWithSpacesIsPassedAsOneString()
+	{
+		string path = WriteTempFileInDirectoryWithSpaces("hello");
+		(string fileName, string[] arguments) = GetReadFileCommand(path);
+
+		// The unquoted single-string overload splits the path on its spaces, which is precisely the
+		// failure the argument-list overload exists to avoid. This pins that difference down.
+		int exitCode = await RunCommand.ExecuteAsync($"{fileName} {string.Join(" ", arguments)}").ConfigureAwait(false);
+
+		Assert.AreNotEqual(0, exitCode, "Expected the unquoted command string to mis-split the path.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldCaptureOutputWhenGivenArgumentList()
+	{
+		List<string> output = [];
+		LineOutputHandler handler = new(onStandardOutput: output.Add);
+
+		int exitCode = await RunCommand.ExecuteAsync("dotnet", ["--version"], handler).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
+		Assert.IsNotEmpty(output.Where(line => !string.IsNullOrWhiteSpace(line)));
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldThrowWhenTokenIsAlreadyCancelled()
+	{
+		using CancellationTokenSource cancellationTokenSource = new();
+		await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+
+		await Assert.ThrowsAsync<OperationCanceledException>(
+			() => RunCommand.ExecuteAsync("dotnet --version", cancellationTokenSource.Token)).ConfigureAwait(false);
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldTerminateProcessWhenCancelledWhileRunning()
+	{
+		using CancellationTokenSource cancellationTokenSource = new();
+		(string fileName, string[] arguments) = GetSleepCommand();
+
+		Task<int> execution = RunCommand.ExecuteAsync(fileName, arguments, new OutputHandler(), cancellationTokenSource.Token);
+		await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+
+		// The command sleeps for 30 seconds, so returning at all proves the process was killed
+		// rather than merely abandoned.
+		await Assert.ThrowsAsync<OperationCanceledException>(() => execution).ConfigureAwait(false);
 	}
 }

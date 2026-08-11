@@ -1,11 +1,16 @@
-// Copyright (c) ktsu.dev
-// All rights reserved.
-// Licensed under the MIT license.
+// Copyright (c) 2023-2026 ktsu-dev contributors
 
 namespace ktsu.RunCommand;
 
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
+#if NETSTANDARD2_0
+// Only the netstandard2.0 argument-escaping fallback needs these.
+using System.Linq;
+using System.Text;
+#endif
 
 /// <summary>
 /// Provides functionality to execute shell commands and process their outputs.
@@ -53,6 +58,27 @@ public static class RunCommand
 		ExecuteAsync(command, outputHandler, elevation).Result;
 
 	/// <summary>
+	/// Executes a shell command synchronously, passing arguments individually so that no manual
+	/// quoting is required.
+	/// </summary>
+	/// <param name="fileName">The executable to run.</param>
+	/// <param name="arguments">The arguments to pass, each as a separate unquoted value.</param>
+	/// <returns>The exit code of the executed process.</returns>
+	public static int Execute(string fileName, IEnumerable<string> arguments) =>
+		ExecuteAsync(fileName, arguments).Result;
+
+	/// <summary>
+	/// Executes a shell command synchronously with an output handler, passing arguments individually
+	/// so that no manual quoting is required.
+	/// </summary>
+	/// <param name="fileName">The executable to run.</param>
+	/// <param name="arguments">The arguments to pass, each as a separate unquoted value.</param>
+	/// <param name="outputHandler">The handler for processing command output.</param>
+	/// <returns>The exit code of the executed process.</returns>
+	public static int Execute(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler) =>
+		ExecuteAsync(fileName, arguments, outputHandler).Result;
+
+	/// <summary>
 	/// Executes a shell command asynchronously
 	/// </summary>
 	/// <param name="command">The command to execute.</param>
@@ -90,6 +116,49 @@ public static class RunCommand
 	/// <param name="elevation">The privilege level under which to run the command.</param>
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
 	public static async Task<int> ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation)
+		=> await ExecuteAsync(command, outputHandler, elevation, CancellationToken.None).ConfigureAwait(false);
+
+	/// <summary>
+	/// Executes a shell command asynchronously, cancelling the process if the token is signalled.
+	/// </summary>
+	/// <param name="command">The command to execute.</param>
+	/// <param name="cancellationToken">
+	/// A token that, when cancelled, terminates the running process and its children.
+	/// </param>
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	public static async Task<int> ExecuteAsync(string command, CancellationToken cancellationToken)
+		=> await ExecuteAsync(command, new OutputHandler(), cancellationToken).ConfigureAwait(false);
+
+	/// <summary>
+	/// Executes a shell command asynchronously with an output handler, cancelling the process if the
+	/// token is signalled.
+	/// </summary>
+	/// <param name="command">The command to execute.</param>
+	/// <param name="outputHandler">The handler for processing command output.</param>
+	/// <param name="cancellationToken">
+	/// A token that, when cancelled, terminates the running process and its children.
+	/// </param>
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	public static async Task<int> ExecuteAsync(string command, OutputHandler outputHandler, CancellationToken cancellationToken)
+		=> await ExecuteAsync(command, outputHandler, Elevation.Default, cancellationToken).ConfigureAwait(false);
+
+	/// <summary>
+	/// Executes a shell command asynchronously with an output handler at the specified elevation
+	/// level, cancelling the process if the token is signalled.
+	/// </summary>
+	/// <param name="command">The command to execute.</param>
+	/// <param name="outputHandler">
+	/// The handler for processing command output. Not invoked when <paramref name="elevation"/> is
+	/// <see cref="Elevation.Elevated"/> on Windows because elevation requires <c>UseShellExecute</c>,
+	/// which is incompatible with output redirection.
+	/// </param>
+	/// <param name="elevation">The privilege level under which to run the command.</param>
+	/// <param name="cancellationToken">
+	/// A token that, when cancelled, terminates the running process and its children.
+	/// </param>
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	/// <exception cref="OperationCanceledException">The token was cancelled before the process exited.</exception>
+	public static async Task<int> ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation, CancellationToken cancellationToken)
 	{
 		Ensure.NotNull(command);
 		Ensure.NotNull(outputHandler);
@@ -99,13 +168,85 @@ public static class RunCommand
 		string filename = commandParts[0];
 		string arguments = commandParts.Length > 1 ? commandParts[1] : string.Empty;
 
+		ProcessStartInfo startInfo = CreateStartInfo(filename, outputHandler, elevation, out bool useElevation);
+		startInfo.Arguments = arguments;
+
+		return await RunAsync(startInfo, outputHandler, useElevation, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Executes a command asynchronously, passing arguments individually so that no manual quoting
+	/// is required.
+	/// </summary>
+	/// <param name="fileName">The executable to run.</param>
+	/// <param name="arguments">The arguments to pass, each as a separate unquoted value.</param>
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	public static async Task<int> ExecuteAsync(string fileName, IEnumerable<string> arguments)
+		=> await ExecuteAsync(fileName, arguments, new OutputHandler()).ConfigureAwait(false);
+
+	/// <summary>
+	/// Executes a command asynchronously with an output handler, passing arguments individually so
+	/// that no manual quoting is required.
+	/// </summary>
+	/// <param name="fileName">The executable to run.</param>
+	/// <param name="arguments">The arguments to pass, each as a separate unquoted value.</param>
+	/// <param name="outputHandler">The handler for processing command output.</param>
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	public static async Task<int> ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler)
+		=> await ExecuteAsync(fileName, arguments, outputHandler, CancellationToken.None).ConfigureAwait(false);
+
+	/// <summary>
+	/// Executes a command asynchronously with an output handler, passing arguments individually so
+	/// that no manual quoting is required, and cancelling the process if the token is signalled.
+	/// </summary>
+	/// <param name="fileName">The executable to run.</param>
+	/// <param name="arguments">The arguments to pass, each as a separate unquoted value.</param>
+	/// <param name="outputHandler">The handler for processing command output.</param>
+	/// <param name="cancellationToken">
+	/// A token that, when cancelled, terminates the running process and its children.
+	/// </param>
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	public static async Task<int> ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CancellationToken cancellationToken)
+		=> await ExecuteAsync(fileName, arguments, outputHandler, Elevation.Default, cancellationToken).ConfigureAwait(false);
+
+	/// <summary>
+	/// Executes a command asynchronously with an output handler at the specified elevation level,
+	/// passing arguments individually so that no manual quoting is required, and cancelling the
+	/// process if the token is signalled.
+	/// </summary>
+	/// <param name="fileName">The executable to run.</param>
+	/// <param name="arguments">The arguments to pass, each as a separate unquoted value.</param>
+	/// <param name="outputHandler">
+	/// The handler for processing command output. Not invoked when <paramref name="elevation"/> is
+	/// <see cref="Elevation.Elevated"/> on Windows because elevation requires <c>UseShellExecute</c>,
+	/// which is incompatible with output redirection.
+	/// </param>
+	/// <param name="elevation">The privilege level under which to run the command.</param>
+	/// <param name="cancellationToken">
+	/// A token that, when cancelled, terminates the running process and its children.
+	/// </param>
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	/// <exception cref="OperationCanceledException">The token was cancelled before the process exited.</exception>
+	public static async Task<int> ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, Elevation elevation, CancellationToken cancellationToken)
+	{
+		Ensure.NotNull(fileName);
+		Ensure.NotNull(arguments);
+		Ensure.NotNull(outputHandler);
+
+		ProcessStartInfo startInfo = CreateStartInfo(fileName, outputHandler, elevation, out bool useElevation);
+		SetArguments(startInfo, arguments);
+
+		return await RunAsync(startInfo, outputHandler, useElevation, cancellationToken).ConfigureAwait(false);
+	}
+
+	private static ProcessStartInfo CreateStartInfo(string fileName, OutputHandler outputHandler, Elevation elevation, out bool useElevation)
+	{
 		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-		bool useElevation = elevation == Elevation.Elevated && isWindows;
+		useElevation = elevation == Elevation.Elevated && isWindows;
 
 		ProcessStartInfo startInfo = new()
 		{
-			FileName = filename,
-			Arguments = arguments,
+			FileName = fileName,
 			CreateNoWindow = true,
 		};
 
@@ -128,20 +269,124 @@ public static class RunCommand
 			}
 		}
 
+		return startInfo;
+	}
+
+#if NETSTANDARD2_0
+	// ProcessStartInfo.ArgumentList is not part of the netstandard2.0 surface, so build an escaped
+	// command line by hand on that target only.
+	private static void SetArguments(ProcessStartInfo startInfo, IEnumerable<string> arguments) =>
+		startInfo.Arguments = string.Join(" ", arguments.Select(EscapeArgument));
+#else
+	private static void SetArguments(ProcessStartInfo startInfo, IEnumerable<string> arguments)
+	{
+		foreach (string argument in arguments)
+		{
+			startInfo.ArgumentList.Add(argument);
+		}
+	}
+#endif
+
+#if NETSTANDARD2_0
+	/// <summary>
+	/// Quotes a single argument following the rules that <c>CommandLineToArgvW</c> applies when it
+	/// splits a command line back into arguments.
+	/// </summary>
+	private static string EscapeArgument(string argument)
+	{
+		Ensure.NotNull(argument);
+
+		if (argument.Length > 0 && argument.IndexOfAny([' ', '\t', '\n', '\v', '"']) < 0)
+		{
+			return argument;
+		}
+
+		StringBuilder builder = new();
+		_ = builder.Append('"');
+
+		for (int i = 0; i < argument.Length; i++)
+		{
+			int backslashes = 0;
+			while (i < argument.Length && argument[i] == '\\')
+			{
+				backslashes++;
+				i++;
+			}
+
+			if (i == argument.Length)
+			{
+				// Trailing backslashes must be doubled so they do not escape the closing quote.
+				_ = builder.Append('\\', backslashes * 2);
+				break;
+			}
+
+			if (argument[i] == '"')
+			{
+				// Backslashes preceding a quote are doubled, and the quote itself is escaped.
+				_ = builder.Append('\\', (backslashes * 2) + 1).Append('"');
+			}
+			else
+			{
+				_ = builder.Append('\\', backslashes).Append(argument[i]);
+			}
+		}
+
+		_ = builder.Append('"');
+		return builder.ToString();
+	}
+#endif
+
+	private static async Task<int> RunAsync(ProcessStartInfo startInfo, OutputHandler outputHandler, bool useElevation, CancellationToken cancellationToken)
+	{
+		cancellationToken.ThrowIfCancellationRequested();
+
 		using Process process = new() { StartInfo = startInfo };
 
 		process.Start();
 
+		// Killing the process is what makes the await actually stop: without it a cancelled wait
+		// would leave the child running unsupervised.
+		using CancellationTokenRegistration registration = cancellationToken.Register(() => TryKill(process));
+
 		if (useElevation)
 		{
-			await process.WaitForExitAsync().ConfigureAwait(false);
+			await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 		}
 		else
 		{
 			AsyncProcessStreamReader outputReader = new(process, outputHandler);
-			await Task.WhenAll(outputReader.Start(), process.WaitForExitAsync()).ConfigureAwait(false);
+			await Task.WhenAll(outputReader.Start(), process.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
 		}
 
 		return process.ExitCode;
+	}
+
+	private static void TryKill(Process process)
+	{
+		try
+		{
+			if (!process.HasExited)
+			{
+#if NETSTANDARD2_0 || NETSTANDARD2_1
+				// Process.Kill(bool) requires .NET Core 3.0 or later, so the older targets can only
+				// terminate the process itself and not any grandchildren it spawned.
+				process.Kill();
+#else
+				process.Kill(entireProcessTree: true);
+#endif
+			}
+		}
+		catch (InvalidOperationException)
+		{
+			// The process exited between the HasExited check and the kill.
+		}
+		catch (System.ComponentModel.Win32Exception)
+		{
+			// The process could not be terminated, typically because it is already exiting.
+		}
+		catch (NotSupportedException)
+		{
+			// Terminating a remote process is not supported.
+		}
 	}
 }
