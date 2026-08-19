@@ -14,6 +14,11 @@ public class RunCommandTests
 			? $"cmd /c copy \"{source}\" \"{destination}\""
 			: $"cp {source} {destination}";
 
+	// These tests cover the command-string overloads themselves, which are obsolete but still
+	// supported, so they have to keep calling them until those overloads are removed. The region
+	// ends after the last such test rather than covering the file.
+#pragma warning disable CS0618 // Type or member is obsolete
+
 	[TestMethod]
 	public void ExecuteShouldExecuteCommandAndReturnExitCode()
 	{
@@ -301,6 +306,8 @@ public class RunCommandTests
 		Assert.IsTrue(didThrow, "Expected an ArgumentNullException to be thrown.");
 	}
 
+#pragma warning restore CS0618 // Type or member is obsolete
+
 	/// <summary>
 	/// Returns a command that reads a single file, as an executable plus separate arguments. Both
 	/// tools exit 0 only when they can open the file, so a path that was wrongly split on its
@@ -393,7 +400,10 @@ public class RunCommandTests
 
 		// The unquoted single-string overload splits the path on its spaces, which is precisely the
 		// failure the argument-list overload exists to avoid. This pins that difference down.
+#pragma warning disable CS0618 // Type or member is obsolete -- this test exists to pin the very
+		// behaviour that made the command-string overloads obsolete, so it must call one.
 		int exitCode = await RunCommand.ExecuteAsync($"{fileName} {string.Join(" ", arguments)}").ConfigureAwait(false);
+#pragma warning restore CS0618 // Type or member is obsolete
 
 		Assert.AreNotEqual(0, exitCode, "Expected the unquoted command string to mis-split the path.");
 	}
@@ -417,7 +427,7 @@ public class RunCommandTests
 		await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
 
 		await Assert.ThrowsAsync<OperationCanceledException>(
-			() => RunCommand.ExecuteAsync("dotnet --version", cancellationTokenSource.Token)).ConfigureAwait(false);
+			() => RunCommand.ExecuteAsync("dotnet", ["--version"], new OutputHandler(), cancellationTokenSource.Token)).ConfigureAwait(false);
 	}
 
 	[TestMethod]
