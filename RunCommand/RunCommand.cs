@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2026 ktsu-dev contributors
+﻿// Copyright (c) 2023-2026 ktsu-dev contributors
 
 namespace ktsu.RunCommand;
 
@@ -357,6 +357,13 @@ public static class RunCommand
 			AsyncProcessStreamReader outputReader = new(process, outputHandler);
 			await Task.WhenAll(outputReader.Start(), process.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
 		}
+
+		// Cancellation reaches the wait two ways at once: the registration above kills the process,
+		// and the wait separately observes the token. The kill makes the process exit fast enough
+		// that the normal-exit path can win, which would return the killed process's exit code and
+		// throw nothing. Re-checking here makes both paths end the same way, so a cancelled call is
+		// never mistaken for a command that genuinely failed.
+		cancellationToken.ThrowIfCancellationRequested();
 
 		return process.ExitCode;
 	}

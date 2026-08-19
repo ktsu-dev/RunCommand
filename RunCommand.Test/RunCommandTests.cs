@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2026 ktsu-dev contributors
+﻿// Copyright (c) 2023-2026 ktsu-dev contributors
 
 namespace ktsu.RunCommand.Test;
 
@@ -390,5 +390,27 @@ public class RunCommandTests
 		// The command sleeps for 30 seconds, so returning at all proves the process was killed
 		// rather than merely abandoned.
 		await Assert.ThrowsAsync<OperationCanceledException>(() => execution).ConfigureAwait(false);
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldThrowRatherThanReturnAnExitCodeWhenCancellationWinsTheRace()
+	{
+		(string fileName, string[] arguments) = GetSleepCommand();
+
+		// Cancelling this close to the start puts two paths in a near dead heat: the registration
+		// kills the process, and the kill makes it exit fast enough that the wait can observe a
+		// normal exit before it observes the token. Losing that race returns the killed process's
+		// exit code instead of throwing, so a caller cannot tell cancellation from real failure.
+		// A single attempt still throws most of the time, which is why this repeats: 50 attempts
+		// make a false pass vanishingly unlikely.
+		for (int attempt = 0; attempt < 50; attempt++)
+		{
+			using CancellationTokenSource cancellationTokenSource = new();
+			cancellationTokenSource.CancelAfter(TimeSpan.FromMilliseconds(1));
+
+			await Assert.ThrowsAsync<OperationCanceledException>(
+				() => RunCommand.ExecuteAsync(fileName, arguments, new OutputHandler(), cancellationTokenSource.Token),
+				$"Attempt {attempt} returned an exit code instead of throwing.").ConfigureAwait(false);
+		}
 	}
 }
