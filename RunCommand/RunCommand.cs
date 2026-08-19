@@ -298,6 +298,17 @@ public static class RunCommand
 		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 		useElevation = options.Elevation == Elevation.Elevated && isWindows;
 
+		if (useElevation && options.EnvironmentVariables is not null)
+		{
+			// Elevation needs UseShellExecute, which starts the process through the shell and offers
+			// nowhere to put an environment. Saying so here beats letting Process.Start fail with a
+			// message that does not mention either setting, and beats silently dropping variables a
+			// caller may be relying on for credentials or machine-parseable output.
+			throw new ArgumentException(
+				"Environment variables cannot be set for an elevated command, because elevation requires UseShellExecute.",
+				nameof(options));
+		}
+
 		ProcessStartInfo startInfo = new()
 		{
 			FileName = fileName,
@@ -321,6 +332,21 @@ public static class RunCommand
 			startInfo.StandardOutputEncoding = outputHandler.Encoding;
 			startInfo.StandardErrorEncoding = outputHandler.Encoding;
 			startInfo.UseShellExecute = false;
+
+			if (options.EnvironmentVariables is not null)
+			{
+				foreach (KeyValuePair<string, string?> variable in options.EnvironmentVariables)
+				{
+					if (variable.Value is null)
+					{
+						_ = startInfo.Environment.Remove(variable.Key);
+					}
+					else
+					{
+						startInfo.Environment[variable.Key] = variable.Value;
+					}
+				}
+			}
 
 			if (isWindows)
 			{

@@ -163,6 +163,11 @@ class Program
             options: new()
             {
                 WorkingDirectory = AbsoluteDirectoryPath.Create(@"C:\repos\my project"),
+                EnvironmentVariables = new Dictionary<string, string?>
+                {
+                    ["GIT_TERMINAL_PROMPT"] = "0",
+                    ["LC_ALL"] = "C",
+                },
             });
 
         Console.WriteLine($"Process exited with code: {exitCode}");
@@ -171,6 +176,19 @@ class Program
 ```
 
 Without a `WorkingDirectory` the process inherits the current directory of the calling process, which is what commands did before this option existed.
+
+`EnvironmentVariables` is an overlay on the inherited environment, not a replacement: a name you do not list keeps whatever the calling process had. A `null` value removes a variable, which is how you unset something the parent had set:
+
+```csharp
+EnvironmentVariables = new Dictionary<string, string?>
+{
+    ["GIT_DIR"] = null,
+}
+```
+
+Environment variables are the only control surface some tools expose, so this covers behaviour with no command-line equivalent — `GIT_TERMINAL_PROMPT=0` to make an authenticating `git fetch` fail rather than block forever on a prompt no terminal will answer, `GIT_ASKPASS`/`SSH_ASKPASS` to supply credentials without putting them on a command line where any process listing can read them, and `LC_ALL=C` to force stable, machine-parseable output rather than whatever the host locale produces.
+
+> **_NOTE:_** _`EnvironmentVariables` cannot be combined with `Elevation.Elevated` on Windows. Elevation requires `UseShellExecute`, which offers nowhere to pass an environment, so the call throws `ArgumentException` rather than silently dropping the variables._
 
 The type is `AbsoluteDirectoryPath` rather than a string on purpose. A relative directory would have to be resolved against the caller's current directory — the process-global state this option exists to avoid depending on, since it is shared by every thread and races with concurrent calls.
 
@@ -219,6 +237,7 @@ class Program
 ### CommandOptions Record
 
 -   `WorkingDirectory`: An `AbsoluteDirectoryPath` naming the directory the process starts in, or `null` to inherit the caller's current directory.
+-   `EnvironmentVariables`: An `IReadOnlyDictionary<string, string?>` applied over the inherited environment, or `null` to inherit it unchanged. A `null` value removes a variable.
 -   `Elevation`: The privilege level under which to run the command. Defaults to `Elevation.Default`.
 
 ### Elevation Enum

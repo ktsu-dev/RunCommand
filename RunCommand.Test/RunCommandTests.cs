@@ -324,6 +324,35 @@ public class RunCommandTests
 		Directory.CreateDirectory(Path.Join(Path.GetTempPath(), $"{nameof(RunCommandTests)} {caller}")).FullName;
 
 	/// <summary>
+	/// Returns a command that prints the value of an environment variable, wrapped in brackets so
+	/// that an empty value is still distinguishable from no output at all.
+	/// </summary>
+	private static (string FileName, string[] Arguments) GetPrintEnvironmentVariableCommand(string name) =>
+		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+			? ("cmd", ["/c", $"echo [%{name}%]"])
+			: ("sh", ["-c", $"echo \"[${name}]\""]);
+
+	// Tests run in parallel and the host environment is process-wide, so each test needs its own
+	// variable name to avoid stepping on another test's value.
+	private static string EnvironmentVariableNameFor([CallerMemberName] string caller = "") =>
+		$"RUNCOMMAND_TEST_{caller.ToUpperInvariant()}";
+
+	private static async Task<string> ReadEnvironmentVariableFromChildAsync(string name, CommandOptions options)
+	{
+		(string fileName, string[] arguments) = GetPrintEnvironmentVariableCommand(name);
+		List<string> output = [];
+
+		int exitCode = await RunCommand.ExecuteAsync(
+			fileName,
+			arguments,
+			new LineOutputHandler(onStandardOutput: output.Add),
+			options).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode, "Expected the command to run successfully.");
+		return string.Concat(output).Trim();
+	}
+
+	/// <summary>
 	/// Returns a command that runs for long enough to be cancelled mid-flight.
 	/// </summary>
 	private static (string FileName, string[] Arguments) GetSleepCommand() =>
@@ -476,5 +505,99 @@ public class RunCommandTests
 	{
 		await Assert.ThrowsAsync<ArgumentNullException>(
 			() => RunCommand.ExecuteAsync("dotnet", ["--version"], new OutputHandler(), null!)).ConfigureAwait(false);
+	}
+	[TestMethod]
+	public async Task ExecuteAsyncShouldSetAnEnvironmentVariableForTheChildProcess()
+	{
+		string name = EnvironmentVariableNameFor();
+
+		string reported = await ReadEnvironmentVariableFromChildAsync(
+			name,
+			new CommandOptions { EnvironmentVariables = new Dictionary<string, string?> { [name] = "expected" } }).ConfigureAwait(false);
+
+		Assert.AreEqual("[expected]", reported, "Expected the child to see the variable that was set for it.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldOverrideAnInheritedEnvironmentVariable()
+	{
+		string name = EnvironmentVariableNameFor();
+		Environment.SetEnvironmentVariable(name, "inherited");
+
+		try
+		{
+			string reported = await ReadEnvironmentVariableFromChildAsync(
+				name,
+				new CommandOptions { EnvironmentVariables = new Dictionary<string, string?> { [name] = "override" } }).ConfigureAwait(false);
+
+			Assert.AreEqual("[override]", reported, "Expected the overlay to win over the inherited value.");
+		}
+		finally
+		{
+			Environment.SetEnvironmentVariable(name, null);
+		}
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldRemoveAnInheritedEnvironmentVariableWhenTheValueIsNull()
+	{
+		string name = EnvironmentVariableNameFor();
+		Environment.SetEnvironmentVariable(name, "inherited");
+
+		try
+		{
+			string reported = await ReadEnvironmentVariableFromChildAsync(
+				name,
+				new CommandOptions { EnvironmentVariables = new Dictionary<string, string?> { [name] = null } }).ConfigureAwait(false);
+
+			// An unset variable prints differently per shell -- cmd echoes the name back verbatim,
+			// sh prints nothing -- so this pins the part that matters on both: the inherited value
+			// did not reach the child.
+			Assert.DoesNotContain("inherited", reported, "Expected a null value to remove the inherited variable.");
+		}
+		finally
+		{
+			Environment.SetEnvironmentVariable(name, null);
+		}
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldInheritTheEnvironmentWhenNoVariablesAreGiven()
+	{
+		string name = EnvironmentVariableNameFor();
+		Environment.SetEnvironmentVariable(name, "inherited");
+
+		try
+		{
+			string reported = await ReadEnvironmentVariableFromChildAsync(name, new CommandOptions()).ConfigureAwait(false);
+
+			Assert.AreEqual("[inherited]", reported, "Expected an unset overlay to leave the previous behaviour untouched.");
+		}
+		finally
+		{
+			Environment.SetEnvironmentVariable(name, null);
+		}
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldRejectEnvironmentVariablesCombinedWithElevation()
+	{
+		if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Elevation only changes how the process is started on Windows.");
+		}
+
+		// Elevation forces UseShellExecute, which cannot carry an environment. Failing loudly beats
+		// silently dropping variables the caller may be relying on.
+		await Assert.ThrowsAsync<ArgumentException>(
+			() => RunCommand.ExecuteAsync(
+				"cmd",
+				["/c", "exit 0"],
+				new OutputHandler(),
+				new CommandOptions
+				{
+					Elevation = Elevation.Elevated,
+					EnvironmentVariables = new Dictionary<string, string?> { ["ANY"] = "value" },
+				})).ConfigureAwait(false);
 	}
 }
