@@ -1,1 +1,1 @@
-run command;shell command;process execution;output handling;async execution;cli;dotnet;csharp
+.NET;C#;dotnet;csharp;run command;shell command;command line;process;process execution;subprocess;child process;output handling;stdout;stderr;output redirection;async execution;asynchronous;cancellation;working directory;environment variables;elevation;uac;cli;exit code;delegates

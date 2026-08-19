@@ -1,6 +1,6 @@
 # ktsu.RunCommand
 
-A library that provides an easy way to execute a shell command and handle the output via delegates. It supports both synchronous and asynchronous execution with customizable output handling.
+> A .NET library for executing external commands and handling their output through delegates, with synchronous and asynchronous APIs, cancellation, and control over the spawned process.
 
 [![License](https://img.shields.io/github/license/ktsu-dev/RunCommand.svg?label=License&logo=nuget)](LICENSE.md)
 [![NuGet Version](https://img.shields.io/nuget/v/ktsu.RunCommand?label=Stable&logo=nuget)](https://nuget.org/packages/ktsu.RunCommand)
@@ -10,21 +10,50 @@ A library that provides an easy way to execute a shell command and handle the ou
 [![GitHub contributors](https://img.shields.io/github/contributors/ktsu-dev/RunCommand?label=Contributors&logo=github)](https://github.com/ktsu-dev/RunCommand/graphs/contributors)
 [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/ktsu-dev/RunCommand/dotnet.yml?branch=main&label=Build&logo=github)](https://github.com/ktsu-dev/RunCommand/actions)
 
+## Introduction
+
+`ktsu.RunCommand` runs an external command and hands you its output as it arrives, instead of making you assemble `Process`, `ProcessStartInfo`, redirected streams and exit-code plumbing yourself. Output is delivered through delegates — either as raw chunks exactly as the process emits them, or buffered into complete lines — and every method returns the process exit code.
+
+Arguments are passed as a vector rather than as one string, so a path containing spaces needs no manual quoting and cannot be mis-split. The process itself can be shaped through a working directory and an environment variable overlay, run elevated on Windows, and terminated along with its children through a cancellation token.
+
+## Features
+
+-   **Delegate-based output**: Receive standard output and standard error through `Action<string>` delegates as the process produces them, rather than waiting for it to exit.
+-   **Raw or line-buffered**: `OutputHandler` delivers undelimited chunks exactly as they arrive; `LineOutputHandler` buffers across chunks and raises one call per complete line.
+-   **Synchronous and asynchronous**: Every operation is available as both `Execute` and `ExecuteAsync`, with the asynchronous implementation as the single source of truth.
+-   **Quote-free arguments**: Pass the executable and each argument separately, so spaces in paths and arguments are handled by the platform rather than by string concatenation.
+-   **Working directory**: Start the process in a specific directory without mutating the process-global current directory.
+-   **Environment variables**: Apply an overlay over the inherited environment for a single call, adding, overriding, or removing individual variables.
+-   **Cancellation**: A signalled `CancellationToken` terminates the process and always surfaces as an `OperationCanceledException`, never as a synthetic exit code.
+-   **Windows elevation**: Launch through the `runas` verb for a UAC-elevated process.
+-   **Custom encoding**: Decode the output streams with any `Encoding`; defaults to UTF-8.
+-   **Broad target support**: .NET Standard 2.0 and 2.1 through .NET 10.
+
 ## Installation
 
-To install RunCommand, you can use the .NET CLI:
+### Package Manager Console
+
+```powershell
+Install-Package ktsu.RunCommand
+```
+
+### .NET CLI
 
 ```bash
 dotnet add package ktsu.RunCommand
 ```
 
-Or you can use the NuGet Package Manager in Visual Studio to search for and install the ktsu.RunCommand package.
+### Package Reference
 
-## Usage
+```xml
+<PackageReference Include="ktsu.RunCommand" Version="1.5.0" />
+```
 
-### Basic Execution
+## Usage Examples
 
-The simplest way to execute a command is to use the `Execute` method, passing the executable and its arguments separately. All methods return the process exit code:
+### Basic Example
+
+Pass the executable and its arguments separately. All methods return the process exit code:
 
 ```csharp
 using ktsu.RunCommand;
@@ -47,35 +76,9 @@ class Program
 }
 ```
 
-### Deprecated: single command strings
-
-The overloads taking one `command` string are obsolete. They separate the executable from its arguments by splitting on the **first space**, which cannot represent an executable path that itself contains a space — on Windows that includes anything under `C:\Program Files\`:
-
-```csharp
-// Obsolete, and broken: splits into "C:\Program" plus "Files\Git\bin\git.exe --version"
-await RunCommand.ExecuteAsync(@"C:\Program Files\Git\bin\git.exe --version");
-
-// Correct
-await RunCommand.ExecuteAsync(@"C:\Program Files\Git\bin\git.exe", ["--version"]);
-```
-
-Quoting does not rescue it, because the split happens before any quote handling. The string form is inherently ambiguous — no parse handles every combination of spaces and quotes without adopting a shell's full grammar — so rather than grow a half-grammar that moves the surprise elsewhere, these overloads are deprecated in favour of the argument-list ones, which have no such ambiguity because the executable is passed separately.
-
-Migration is mechanical: split the string yourself at the boundaries you meant.
-
-| Obsolete | Replacement |
-| --- | --- |
-| `Execute(command)` | `Execute(fileName, arguments)` |
-| `Execute(command, outputHandler)` | `Execute(fileName, arguments, outputHandler)` |
-| `Execute(command, elevation)` | `Execute(fileName, arguments, outputHandler, options)` |
-| `ExecuteAsync(command)` | `ExecuteAsync(fileName, arguments)` |
-| `ExecuteAsync(command, outputHandler)` | `ExecuteAsync(fileName, arguments, outputHandler)` |
-| `ExecuteAsync(command, cancellationToken)` | `ExecuteAsync(fileName, arguments, outputHandler, cancellationToken)` |
-| `ExecuteAsync(command, outputHandler, elevation, cancellationToken)` | `ExecuteAsync(fileName, arguments, outputHandler, options, cancellationToken)` |
-
 ### Custom Output Handling
 
-To handle the output of the command, you can provide delegates to the `OutputHandler` class:
+To handle the output of the command, provide delegates to the `OutputHandler` class:
 
 ```csharp
 using ktsu.RunCommand;
@@ -98,11 +101,11 @@ class Program
 }
 ```
 
-> **_NOTE:_** _When using the default OutputHandler, the delegates will receive undelimited chunks of output. This gives you the flexibility to receive exactly the output the command produces, including whitespace and non-printable characters, and handle it as you see fit._
+> **_NOTE:_** _When using the default `OutputHandler`, the delegates receive undelimited chunks of output. This gives you exactly what the command produces, including whitespace and non-printable characters, to handle as you see fit._
 
 ### Line-by-Line Output Handling
 
-If you prefer to handle the output line by line, you can use the `LineOutputHandler` class:
+To handle the output one line at a time, use the `LineOutputHandler` class:
 
 ```csharp
 using ktsu.RunCommand;
@@ -127,7 +130,7 @@ class Program
 
 ### Asynchronous Execution
 
-All of the above examples can be executed asynchronously by using the `ExecuteAsync` method:
+All of the above examples can be run asynchronously with `ExecuteAsync`:
 
 ```csharp
 using ktsu.RunCommand;
@@ -138,43 +141,45 @@ class Program
     {
         int exitCode = await RunCommand.ExecuteAsync("dotnet", ["--version"]);
 
-        if (exitCode == 0)
-        {
-            Console.WriteLine("Command executed successfully!");
-        }
-        else
-        {
-            Console.WriteLine($"Command failed with exit code: {exitCode}");
-        }
+        Console.WriteLine($"Process exited with code: {exitCode}");
     }
 }
 ```
 
-## Elevation (Windows)
+### Cancellation
 
-If you need to run a command with elevated privileges, pass `Elevation.Elevated`. On Windows this launches the process with the `runas` verb, which triggers a UAC prompt:
+Passing a `CancellationToken` terminates the process when the token is signalled:
 
 ```csharp
 using ktsu.RunCommand;
 
 class Program
 {
-    static void Main()
+    static async Task Main()
     {
-        int exitCode = RunCommand.Execute(
-            fileName: "powershell",
-            arguments: ["-Command", "Get-Service"],
-            outputHandler: new(),
-            options: new() { Elevation = Elevation.Elevated });
+        using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(30));
 
-        Console.WriteLine($"Process exited with code: {exitCode}");
+        try
+        {
+            int exitCode = await RunCommand.ExecuteAsync(
+                fileName: "dotnet",
+                arguments: ["build"],
+                outputHandler: new LineOutputHandler(onStandardOutput: Console.WriteLine),
+                cancellationToken: cancellation.Token);
+
+            Console.WriteLine($"Process exited with code: {exitCode}");
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("The command was cancelled.");
+        }
     }
 }
 ```
 
-> **_NOTE:_** _Output redirection is incompatible with `runas`, so an `OutputHandler` passed alongside `Elevation.Elevated` will **not** be invoked. You still get the process exit code._
+A cancelled call always throws `OperationCanceledException` — it never returns the killed process's exit code — so cancellation cannot be mistaken for a genuine failure of the command.
 
-On non-Windows platforms `Elevation.Elevated` is a no-op — prefix your command with `sudo` yourself if you need elevation there.
+On .NET Core 3.0 and later the entire process tree is terminated. On .NET Standard 2.0 and 2.1 only the process itself can be terminated, so any grandchildren it spawned are left running.
 
 ## Process Options
 
@@ -207,7 +212,15 @@ class Program
 }
 ```
 
+`CommandOptions.Elevation` carries the privilege level too, so a single options object replaces the separate `Elevation` argument.
+
+### Working Directory
+
 Without a `WorkingDirectory` the process inherits the current directory of the calling process, which is what commands did before this option existed.
+
+The type is `AbsoluteDirectoryPath` rather than a string on purpose. A relative directory would have to be resolved against the caller's current directory — the process-global state this option exists to avoid depending on, since it is shared by every thread and races with concurrent calls.
+
+### Environment Variables
 
 `EnvironmentVariables` is an overlay on the inherited environment, not a replacement: a name you do not list keeps whatever the calling process had. A `null` value removes a variable, which is how you unset something the parent had set:
 
@@ -222,13 +235,35 @@ Environment variables are the only control surface some tools expose, so this co
 
 > **_NOTE:_** _`EnvironmentVariables` cannot be combined with `Elevation.Elevated` on Windows. Elevation requires `UseShellExecute`, which offers nowhere to pass an environment, so the call throws `ArgumentException` rather than silently dropping the variables._
 
-The type is `AbsoluteDirectoryPath` rather than a string on purpose. A relative directory would have to be resolved against the caller's current directory — the process-global state this option exists to avoid depending on, since it is shared by every thread and races with concurrent calls.
+## Elevation (Windows)
 
-`CommandOptions.Elevation` carries the privilege level, so a single options object replaces the separate `Elevation` argument.
+To run a command with elevated privileges, set `Elevation.Elevated`. On Windows this launches the process with the `runas` verb, which triggers a UAC prompt:
+
+```csharp
+using ktsu.RunCommand;
+
+class Program
+{
+    static void Main()
+    {
+        int exitCode = RunCommand.Execute(
+            fileName: "powershell",
+            arguments: ["-Command", "Get-Service"],
+            outputHandler: new(),
+            options: new() { Elevation = Elevation.Elevated });
+
+        Console.WriteLine($"Process exited with code: {exitCode}");
+    }
+}
+```
+
+> **_NOTE:_** _Output redirection is incompatible with `runas`, so an `OutputHandler` passed alongside `Elevation.Elevated` will **not** be invoked. You still get the process exit code._
+
+On non-Windows platforms `Elevation.Elevated` is a no-op — prefix your command with `sudo` yourself if you need elevation there.
 
 ## Encoding
 
-By default, the library uses the UTF-8 encoding for the input and output streams. If you need to use a different encoding, you can specify it in the `OutputHandler` or `LineOutputHandler` constructor:
+By default the library decodes the output streams as UTF-8. To use a different encoding, specify it in the `OutputHandler` or `LineOutputHandler` constructor:
 
 ```csharp
 using System.Text;
@@ -251,59 +286,105 @@ class Program
 }
 ```
 
+## Deprecated: Single Command Strings
+
+The overloads taking one `command` string are obsolete. They separate the executable from its arguments by splitting on the **first space**, which cannot represent an executable path that itself contains a space — on Windows that includes anything under `C:\Program Files\`:
+
+```csharp
+// Obsolete, and broken: splits into "C:\Program" plus "Files\Git\bin\git.exe --version"
+await RunCommand.ExecuteAsync(@"C:\Program Files\Git\bin\git.exe --version");
+
+// Correct
+await RunCommand.ExecuteAsync(@"C:\Program Files\Git\bin\git.exe", ["--version"]);
+```
+
+Quoting does not rescue it, because the split happens before any quote handling. The string form is inherently ambiguous — no parse handles every combination of spaces and quotes without adopting a shell's full grammar — so rather than grow a half-grammar that moves the surprise elsewhere, these overloads are deprecated in favour of the argument-list ones, which have no such ambiguity because the executable is passed separately.
+
+Migration is mechanical: split the string yourself at the boundaries you meant.
+
+| Obsolete | Replacement |
+| --- | --- |
+| `Execute(command)` | `Execute(fileName, arguments)` |
+| `Execute(command, outputHandler)` | `Execute(fileName, arguments, outputHandler)` |
+| `Execute(command, elevation)` | `Execute(fileName, arguments, outputHandler, options)` |
+| `ExecuteAsync(command)` | `ExecuteAsync(fileName, arguments)` |
+| `ExecuteAsync(command, outputHandler)` | `ExecuteAsync(fileName, arguments, outputHandler)` |
+| `ExecuteAsync(command, cancellationToken)` | `ExecuteAsync(fileName, arguments, outputHandler, cancellationToken)` |
+| `ExecuteAsync(command, outputHandler, elevation, cancellationToken)` | `ExecuteAsync(fileName, arguments, outputHandler, options, cancellationToken)` |
+
 ## API Reference
 
-### RunCommand Class
+### `RunCommand`
 
-Passing the executable and its arguments separately:
+Static class providing the command execution API. Every method returns the process exit code.
 
--   `Execute(string fileName, IEnumerable<string> arguments)`: Executes a command synchronously and returns the process exit code.
--   `Execute(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler)`: Executes a command synchronously with custom output handling.
--   `ExecuteAsync(string fileName, IEnumerable<string> arguments)`: The asynchronous equivalent.
--   `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler)`: The asynchronous equivalent with custom output handling.
--   `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CancellationToken cancellationToken)`: As above, terminating the process and its children if the token is signalled.
+#### Methods
 
-**Obsolete** — see [Deprecated: single command strings](#deprecated-single-command-strings):
+| Name | Return Type | Description |
+|------|-------------|-------------|
+| `Execute(string fileName, IEnumerable<string> arguments)` | `int` | Executes a command synchronously. |
+| `Execute(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler)` | `int` | Executes a command synchronously with custom output handling. |
+| `Execute(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options)` | `int` | Executes a command synchronously with the given process options. |
+| `ExecuteAsync(string fileName, IEnumerable<string> arguments)` | `Task<int>` | Executes a command asynchronously. |
+| `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler)` | `Task<int>` | Executes a command asynchronously with custom output handling. |
+| `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CancellationToken cancellationToken)` | `Task<int>` | As above, terminating the process and its children if the token is signalled. |
+| `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, Elevation elevation, CancellationToken cancellationToken)` | `Task<int>` | As above, at the given elevation level. |
+| `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options)` | `Task<int>` | Executes a command asynchronously with the given process options. |
+| `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options, CancellationToken cancellationToken)` | `Task<int>` | As above, terminating the process and its children if the token is signalled. |
 
--   `Execute(string command)`, `Execute(string command, OutputHandler outputHandler)`, `Execute(string command, Elevation elevation)`, `Execute(string command, OutputHandler outputHandler, Elevation elevation)`
--   `ExecuteAsync(string command)`, `ExecuteAsync(string command, OutputHandler outputHandler)`, `ExecuteAsync(string command, Elevation elevation)`, `ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation)`, `ExecuteAsync(string command, CancellationToken cancellationToken)`, `ExecuteAsync(string command, OutputHandler outputHandler, CancellationToken cancellationToken)`, `ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation, CancellationToken cancellationToken)`
--   `Execute(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options)`: Executes a command synchronously with the given process options, passing arguments individually so no manual quoting is required.
--   `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options)`: The asynchronous equivalent.
--   `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options, CancellationToken cancellationToken)`: As above, terminating the process and its children if the token is signalled.
+The overloads taking a single `command` string — four `Execute` and seven `ExecuteAsync` — are **obsolete**. See [Deprecated: Single Command Strings](#deprecated-single-command-strings) for the migration table.
 
-### CommandOptions Record
+### `CommandOptions`
 
--   `WorkingDirectory`: An `AbsoluteDirectoryPath` naming the directory the process starts in, or `null` to inherit the caller's current directory.
--   `EnvironmentVariables`: An `IReadOnlyDictionary<string, string?>` applied over the inherited environment, or `null` to inherit it unchanged. A `null` value removes a variable.
--   `Elevation`: The privilege level under which to run the command. Defaults to `Elevation.Default`.
+Record describing how to shape the process a command runs in. Every member defaults to the behaviour commands had before the type existed, so an instance with nothing set is equivalent to not passing one at all.
 
-### Elevation Enum
+#### Properties
 
--   `Elevation.Default`: Run with the current process's privileges (output is captured).
--   `Elevation.Elevated`: On Windows, launch via the `runas` verb (UAC prompt); output is **not** captured. No-op on non-Windows.
+| Name | Type | Description |
+|------|------|-------------|
+| `WorkingDirectory` | `AbsoluteDirectoryPath?` | The directory the process starts in, or `null` to inherit the caller's current directory. |
+| `EnvironmentVariables` | `IReadOnlyDictionary<string, string?>?` | Variables applied over the inherited environment, or `null` to inherit it unchanged. A `null` value removes a variable. |
+| `Elevation` | `Elevation` | The privilege level under which to run the command. Defaults to `Elevation.Default`. |
 
--   ### OutputHandler Class
+### `OutputHandler`
 
-Processes output in raw chunks:
+Processes output in raw, undelimited chunks as they arrive from the process.
 
--   `OutputHandler(onStandardOutput, onStandardError)`: Constructor with handlers for output and error streams.
+#### Constructor
 
-### LineOutputHandler Class
+| Name | Description |
+|------|-------------|
+| `OutputHandler(Action<string>? onStandardOutput = null, Action<string>? onStandardError = null, Encoding? encoding = null)` | Creates a handler with delegates for the output and error streams. `encoding` defaults to UTF-8. |
 
-Processes output line by line:
+#### Properties
 
--   `LineOutputHandler(onStandardOutput, onStandardError)`: Constructor with handlers for output and error streams.
+| Name | Type | Description |
+|------|------|-------------|
+| `Encoding` | `Encoding` | The encoding used to decode the process's output streams. |
 
-> **_NOTE:_** _The `OutputHandler` classes receive undelimited chunks of output directly from the process stream. The `LineOutputHandler` buffers this output and splits it by newline characters, invoking the delegates for each complete line._
+### `LineOutputHandler`
 
-## License
+Inherits from `OutputHandler` and buffers incoming chunks, invoking the delegates once per complete line. Incomplete trailing data is held until the rest of the line arrives.
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE.md) file for details.
+#### Constructor
+
+| Name | Description |
+|------|-------------|
+| `LineOutputHandler(Action<string>? onStandardOutput = null, Action<string>? onStandardError = null, Encoding? encoding = null)` | Creates a line-buffering handler with delegates for the output and error streams. |
+
+### `Elevation`
+
+Enum specifying the privilege level under which a command runs.
+
+| Name | Description |
+|------|-------------|
+| `Default` | Run with the current process's privileges. Standard output and standard error are captured. |
+| `Elevated` | On Windows, launch through the `runas` verb, prompting for UAC consent; output is **not** captured. No effect on non-Windows platforms. |
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
+Contributions are welcome! Feel free to open issues or submit pull requests.
 
-## Acknowledgements
+## License
 
-Thanks to the .NET community and ktsu.dev contributors for their support.
+This project is licensed under the MIT License. See the [LICENSE.md](LICENSE.md) file for details.
