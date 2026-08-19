@@ -144,6 +144,38 @@ class Program
 
 On non-Windows platforms `Elevation.Elevated` is a no-op — prefix your command with `sudo` yourself if you need elevation there.
 
+## Process Options
+
+`CommandOptions` shapes the process a command runs in. Pass it alongside an executable and its arguments:
+
+```csharp
+using ktsu.RunCommand;
+using ktsu.Semantics.Paths;
+
+class Program
+{
+    static async Task Main()
+    {
+        int exitCode = await RunCommand.ExecuteAsync(
+            fileName: "git",
+            arguments: ["status", "--short"],
+            outputHandler: new LineOutputHandler(onStandardOutput: Console.WriteLine),
+            options: new()
+            {
+                WorkingDirectory = AbsoluteDirectoryPath.Create(@"C:\repos\my project"),
+            });
+
+        Console.WriteLine($"Process exited with code: {exitCode}");
+    }
+}
+```
+
+Without a `WorkingDirectory` the process inherits the current directory of the calling process, which is what commands did before this option existed.
+
+The type is `AbsoluteDirectoryPath` rather than a string on purpose. A relative directory would have to be resolved against the caller's current directory — the process-global state this option exists to avoid depending on, since it is shared by every thread and races with concurrent calls.
+
+`CommandOptions.Elevation` carries the privilege level, so a single options object replaces the separate `Elevation` argument.
+
 ## Encoding
 
 By default, the library uses the UTF-8 encoding for the input and output streams. If you need to use a different encoding, you can specify it in the `OutputHandler` or `LineOutputHandler` constructor:
@@ -180,6 +212,14 @@ class Program
 -   `ExecuteAsync(string command, OutputHandler outputHandler)`: Executes a command asynchronously with custom output handling and returns a task with the process exit code.
 -   `ExecuteAsync(string command, Elevation elevation)`: Executes a command asynchronously at the given elevation level.
 -   `ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation)`: Executes a command asynchronously with custom output handling at the given elevation level.
+-   `Execute(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options)`: Executes a command synchronously with the given process options, passing arguments individually so no manual quoting is required.
+-   `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options)`: The asynchronous equivalent.
+-   `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options, CancellationToken cancellationToken)`: As above, terminating the process and its children if the token is signalled.
+
+### CommandOptions Record
+
+-   `WorkingDirectory`: An `AbsoluteDirectoryPath` naming the directory the process starts in, or `null` to inherit the caller's current directory.
+-   `Elevation`: The privilege level under which to run the command. Defaults to `Elevation.Default`.
 
 ### Elevation Enum
 

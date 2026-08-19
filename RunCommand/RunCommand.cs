@@ -79,6 +79,22 @@ public static class RunCommand
 		ExecuteAsync(fileName, arguments, outputHandler).Result;
 
 	/// <summary>
+	/// Executes a shell command synchronously with an output handler and the given process options,
+	/// passing arguments individually so that no manual quoting is required.
+	/// </summary>
+	/// <param name="fileName">The executable to run.</param>
+	/// <param name="arguments">The arguments to pass, each as a separate unquoted value.</param>
+	/// <param name="outputHandler">
+	/// The handler for processing command output. Not invoked when <see cref="CommandOptions.Elevation"/>
+	/// is <see cref="Elevation.Elevated"/> on Windows because elevation requires <c>UseShellExecute</c>,
+	/// which is incompatible with output redirection.
+	/// </param>
+	/// <param name="options">The options shaping the process the command runs in.</param>
+	/// <returns>The exit code of the executed process.</returns>
+	public static int Execute(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options) =>
+		ExecuteAsync(fileName, arguments, outputHandler, options).Result;
+
+	/// <summary>
 	/// Executes a shell command asynchronously
 	/// </summary>
 	/// <param name="command">The command to execute.</param>
@@ -168,7 +184,7 @@ public static class RunCommand
 		string filename = commandParts[0];
 		string arguments = commandParts.Length > 1 ? commandParts[1] : string.Empty;
 
-		ProcessStartInfo startInfo = CreateStartInfo(filename, outputHandler, elevation, out bool useElevation);
+		ProcessStartInfo startInfo = CreateStartInfo(filename, outputHandler, new CommandOptions { Elevation = elevation }, out bool useElevation);
 		startInfo.Arguments = arguments;
 
 		return await RunAsync(startInfo, outputHandler, useElevation, cancellationToken).ConfigureAwait(false);
@@ -228,27 +244,70 @@ public static class RunCommand
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
 	/// <exception cref="OperationCanceledException">The token was cancelled before the process exited.</exception>
 	public static async Task<int> ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, Elevation elevation, CancellationToken cancellationToken)
+		=> await ExecuteAsync(fileName, arguments, outputHandler, new CommandOptions { Elevation = elevation }, cancellationToken).ConfigureAwait(false);
+
+	/// <summary>
+	/// Executes a command asynchronously with an output handler and the given process options,
+	/// passing arguments individually so that no manual quoting is required.
+	/// </summary>
+	/// <param name="fileName">The executable to run.</param>
+	/// <param name="arguments">The arguments to pass, each as a separate unquoted value.</param>
+	/// <param name="outputHandler">
+	/// The handler for processing command output. Not invoked when <see cref="CommandOptions.Elevation"/>
+	/// is <see cref="Elevation.Elevated"/> on Windows because elevation requires <c>UseShellExecute</c>,
+	/// which is incompatible with output redirection.
+	/// </param>
+	/// <param name="options">The options shaping the process the command runs in.</param>
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	public static async Task<int> ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options)
+		=> await ExecuteAsync(fileName, arguments, outputHandler, options, CancellationToken.None).ConfigureAwait(false);
+
+	/// <summary>
+	/// Executes a command asynchronously with an output handler and the given process options,
+	/// passing arguments individually so that no manual quoting is required, and cancelling the
+	/// process if the token is signalled.
+	/// </summary>
+	/// <param name="fileName">The executable to run.</param>
+	/// <param name="arguments">The arguments to pass, each as a separate unquoted value.</param>
+	/// <param name="outputHandler">
+	/// The handler for processing command output. Not invoked when <see cref="CommandOptions.Elevation"/>
+	/// is <see cref="Elevation.Elevated"/> on Windows because elevation requires <c>UseShellExecute</c>,
+	/// which is incompatible with output redirection.
+	/// </param>
+	/// <param name="options">The options shaping the process the command runs in.</param>
+	/// <param name="cancellationToken">
+	/// A token that, when cancelled, terminates the running process and its children.
+	/// </param>
+	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	/// <exception cref="OperationCanceledException">The token was cancelled before the process exited.</exception>
+	public static async Task<int> ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options, CancellationToken cancellationToken)
 	{
 		Ensure.NotNull(fileName);
 		Ensure.NotNull(arguments);
 		Ensure.NotNull(outputHandler);
+		Ensure.NotNull(options);
 
-		ProcessStartInfo startInfo = CreateStartInfo(fileName, outputHandler, elevation, out bool useElevation);
+		ProcessStartInfo startInfo = CreateStartInfo(fileName, outputHandler, options, out bool useElevation);
 		SetArguments(startInfo, arguments);
 
 		return await RunAsync(startInfo, outputHandler, useElevation, cancellationToken).ConfigureAwait(false);
 	}
 
-	private static ProcessStartInfo CreateStartInfo(string fileName, OutputHandler outputHandler, Elevation elevation, out bool useElevation)
+	private static ProcessStartInfo CreateStartInfo(string fileName, OutputHandler outputHandler, CommandOptions options, out bool useElevation)
 	{
 		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-		useElevation = elevation == Elevation.Elevated && isWindows;
+		useElevation = options.Elevation == Elevation.Elevated && isWindows;
 
 		ProcessStartInfo startInfo = new()
 		{
 			FileName = fileName,
 			CreateNoWindow = true,
 		};
+
+		if (options.WorkingDirectory is not null)
+		{
+			startInfo.WorkingDirectory = options.WorkingDirectory.WeakString;
+		}
 
 		if (useElevation)
 		{
