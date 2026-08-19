@@ -4,6 +4,7 @@ namespace ktsu.RunCommand.Test;
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using ktsu.Semantics.Paths;
 
 [TestClass]
 public class RunCommandTests
@@ -311,6 +312,18 @@ public class RunCommandTests
 			: ("cat", [path]);
 
 	/// <summary>
+	/// Returns a command that prints the directory its process was started in.
+	/// </summary>
+	private static (string FileName, string[] Arguments) GetPrintWorkingDirectoryCommand() =>
+		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+			? ("cmd", ["/c", "cd"])
+			: ("pwd", []);
+
+	// The caller name keeps each test on its own directory, since tests run in parallel.
+	private static string CreateDirectoryForTest([CallerMemberName] string caller = "") =>
+		Directory.CreateDirectory(Path.Join(Path.GetTempPath(), $"{nameof(RunCommandTests)} {caller}")).FullName;
+
+	/// <summary>
 	/// Returns a command that runs for long enough to be cancelled mid-flight.
 	/// </summary>
 	private static (string FileName, string[] Arguments) GetSleepCommand() =>
@@ -412,5 +425,56 @@ public class RunCommandTests
 				() => RunCommand.ExecuteAsync(fileName, arguments, new OutputHandler(), cancellationTokenSource.Token),
 				$"Attempt {attempt} returned an exit code instead of throwing.").ConfigureAwait(false);
 		}
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldStartTheProcessInTheGivenWorkingDirectory()
+	{
+		string directory = CreateDirectoryForTest();
+		(string fileName, string[] arguments) = GetPrintWorkingDirectoryCommand();
+		List<string> output = [];
+
+		int exitCode = await RunCommand.ExecuteAsync(
+			fileName,
+			arguments,
+			new LineOutputHandler(onStandardOutput: output.Add),
+			new CommandOptions { WorkingDirectory = AbsoluteDirectoryPath.Create(directory) }).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode, "Expected the command to run successfully.");
+
+		// Comparing only the final segment keeps this robust where the temporary directory is
+		// reached through a symlink, as it is on macOS, and the process reports the resolved path
+		// rather than the one it was handed.
+		Assert.AreEqual(
+			Path.GetFileName(directory),
+			Path.GetFileName(string.Concat(output).Trim()),
+			"Expected the process to start in the directory it was given.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldInheritTheCurrentDirectoryWhenNoWorkingDirectoryIsGiven()
+	{
+		(string fileName, string[] arguments) = GetPrintWorkingDirectoryCommand();
+		List<string> output = [];
+
+		int exitCode = await RunCommand.ExecuteAsync(
+			fileName,
+			arguments,
+			new LineOutputHandler(onStandardOutput: output.Add),
+			new CommandOptions()).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode, "Expected the command to run successfully.");
+		Assert.AreEqual(
+			Path.TrimEndingDirectorySeparator(Path.GetFullPath(Environment.CurrentDirectory)),
+			Path.TrimEndingDirectorySeparator(Path.GetFullPath(string.Concat(output).Trim())),
+			ignoreCase: RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+			"Expected an unset working directory to leave the previous behaviour untouched.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldThrowArgumentNullExceptionWhenOptionsAreNull()
+	{
+		await Assert.ThrowsAsync<ArgumentNullException>(
+			() => RunCommand.ExecuteAsync("dotnet", ["--version"], new OutputHandler(), null!)).ConfigureAwait(false);
 	}
 }
