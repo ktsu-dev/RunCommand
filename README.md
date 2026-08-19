@@ -24,7 +24,7 @@ Or you can use the NuGet Package Manager in Visual Studio to search for and inst
 
 ### Basic Execution
 
-The simplest way to execute a command is to use the `Execute` method. All methods return the process exit code:
+The simplest way to execute a command is to use the `Execute` method, passing the executable and its arguments separately. All methods return the process exit code:
 
 ```csharp
 using ktsu.RunCommand;
@@ -33,7 +33,7 @@ class Program
 {
     static void Main()
     {
-        int exitCode = RunCommand.Execute("echo Hello World!");
+        int exitCode = RunCommand.Execute("dotnet", ["--version"]);
 
         if (exitCode == 0)
         {
@@ -47,6 +47,32 @@ class Program
 }
 ```
 
+### Deprecated: single command strings
+
+The overloads taking one `command` string are obsolete. They separate the executable from its arguments by splitting on the **first space**, which cannot represent an executable path that itself contains a space — on Windows that includes anything under `C:\Program Files\`:
+
+```csharp
+// Obsolete, and broken: splits into "C:\Program" plus "Files\Git\bin\git.exe --version"
+await RunCommand.ExecuteAsync(@"C:\Program Files\Git\bin\git.exe --version");
+
+// Correct
+await RunCommand.ExecuteAsync(@"C:\Program Files\Git\bin\git.exe", ["--version"]);
+```
+
+Quoting does not rescue it, because the split happens before any quote handling. The string form is inherently ambiguous — no parse handles every combination of spaces and quotes without adopting a shell's full grammar — so rather than grow a half-grammar that moves the surprise elsewhere, these overloads are deprecated in favour of the argument-list ones, which have no such ambiguity because the executable is passed separately.
+
+Migration is mechanical: split the string yourself at the boundaries you meant.
+
+| Obsolete | Replacement |
+| --- | --- |
+| `Execute(command)` | `Execute(fileName, arguments)` |
+| `Execute(command, outputHandler)` | `Execute(fileName, arguments, outputHandler)` |
+| `Execute(command, elevation)` | `Execute(fileName, arguments, outputHandler, options)` |
+| `ExecuteAsync(command)` | `ExecuteAsync(fileName, arguments)` |
+| `ExecuteAsync(command, outputHandler)` | `ExecuteAsync(fileName, arguments, outputHandler)` |
+| `ExecuteAsync(command, cancellationToken)` | `ExecuteAsync(fileName, arguments, outputHandler, cancellationToken)` |
+| `ExecuteAsync(command, outputHandler, elevation, cancellationToken)` | `ExecuteAsync(fileName, arguments, outputHandler, options, cancellationToken)` |
+
 ### Custom Output Handling
 
 To handle the output of the command, you can provide delegates to the `OutputHandler` class:
@@ -59,7 +85,8 @@ class Program
     static void Main()
     {
         int exitCode = RunCommand.Execute(
-            command: "echo Hello World!",
+            fileName: "dotnet",
+            arguments: ["--version"],
             outputHandler: new(
                 onStandardOutput: Console.Write,
                 onStandardError: Console.Write
@@ -85,7 +112,8 @@ class Program
     static void Main()
     {
         int exitCode = RunCommand.Execute(
-            command: "echo Hello World!",
+            fileName: "dotnet",
+            arguments: ["--version"],
             outputHandler: new LineOutputHandler(
                 onStandardOutput: line => Console.WriteLine($"Output: {line}"),
                 onStandardError: line => Console.WriteLine($"Error: {line}")
@@ -108,7 +136,7 @@ class Program
 {
     static async Task Main()
     {
-        int exitCode = await RunCommand.ExecuteAsync("echo Hello World!");
+        int exitCode = await RunCommand.ExecuteAsync("dotnet", ["--version"]);
 
         if (exitCode == 0)
         {
@@ -133,7 +161,11 @@ class Program
 {
     static void Main()
     {
-        int exitCode = RunCommand.Execute("powershell -Command \"Get-Service\"", Elevation.Elevated);
+        int exitCode = RunCommand.Execute(
+            fileName: "powershell",
+            arguments: ["-Command", "Get-Service"],
+            outputHandler: new(),
+            options: new() { Elevation = Elevation.Elevated });
 
         Console.WriteLine($"Process exited with code: {exitCode}");
     }
@@ -207,7 +239,8 @@ class Program
     static void Main()
     {
         int exitCode = RunCommand.Execute(
-            command: "echo Hello World!",
+            fileName: "dotnet",
+            arguments: ["--version"],
             outputHandler: new(
                 onStandardOutput: Console.Write,
                 onStandardError: Console.Write,
@@ -222,14 +255,18 @@ class Program
 
 ### RunCommand Class
 
--   `Execute(string command)`: Executes a command synchronously and returns the process exit code.
--   `Execute(string command, OutputHandler outputHandler)`: Executes a command synchronously with custom output handling and returns the process exit code.
--   `Execute(string command, Elevation elevation)`: Executes a command synchronously at the given elevation level.
--   `Execute(string command, OutputHandler outputHandler, Elevation elevation)`: Executes a command synchronously with custom output handling at the given elevation level.
--   `ExecuteAsync(string command)`: Executes a command asynchronously and returns a task with the process exit code.
--   `ExecuteAsync(string command, OutputHandler outputHandler)`: Executes a command asynchronously with custom output handling and returns a task with the process exit code.
--   `ExecuteAsync(string command, Elevation elevation)`: Executes a command asynchronously at the given elevation level.
--   `ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation)`: Executes a command asynchronously with custom output handling at the given elevation level.
+Passing the executable and its arguments separately:
+
+-   `Execute(string fileName, IEnumerable<string> arguments)`: Executes a command synchronously and returns the process exit code.
+-   `Execute(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler)`: Executes a command synchronously with custom output handling.
+-   `ExecuteAsync(string fileName, IEnumerable<string> arguments)`: The asynchronous equivalent.
+-   `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler)`: The asynchronous equivalent with custom output handling.
+-   `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CancellationToken cancellationToken)`: As above, terminating the process and its children if the token is signalled.
+
+**Obsolete** — see [Deprecated: single command strings](#deprecated-single-command-strings):
+
+-   `Execute(string command)`, `Execute(string command, OutputHandler outputHandler)`, `Execute(string command, Elevation elevation)`, `Execute(string command, OutputHandler outputHandler, Elevation elevation)`
+-   `ExecuteAsync(string command)`, `ExecuteAsync(string command, OutputHandler outputHandler)`, `ExecuteAsync(string command, Elevation elevation)`, `ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation)`, `ExecuteAsync(string command, CancellationToken cancellationToken)`, `ExecuteAsync(string command, OutputHandler outputHandler, CancellationToken cancellationToken)`, `ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation, CancellationToken cancellationToken)`
 -   `Execute(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options)`: Executes a command synchronously with the given process options, passing arguments individually so no manual quoting is required.
 -   `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options)`: The asynchronous equivalent.
 -   `ExecuteAsync(string fileName, IEnumerable<string> arguments, OutputHandler outputHandler, CommandOptions options, CancellationToken cancellationToken)`: As above, terminating the process and its children if the token is signalled.

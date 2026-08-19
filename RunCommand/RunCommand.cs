@@ -2,6 +2,7 @@
 
 namespace ktsu.RunCommand;
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -22,6 +23,8 @@ public static class RunCommand
 	/// </summary>
 	/// <param name="command">The command to execute.</param>
 	/// <returns>The exit code of the executed process.</returns>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static int Execute(string command) =>
 		ExecuteAsync(command).Result;
 
@@ -31,6 +34,8 @@ public static class RunCommand
 	/// <param name="command">The command to execute.</param>
 	/// <param name="outputHandler">The handler for processing command output.</param>
 	/// <returns>The exit code of the executed process.</returns>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static int Execute(string command, OutputHandler outputHandler) =>
 		ExecuteAsync(command, outputHandler).Result;
 
@@ -40,6 +45,8 @@ public static class RunCommand
 	/// <param name="command">The command to execute.</param>
 	/// <param name="elevation">The privilege level under which to run the command.</param>
 	/// <returns>The exit code of the executed process.</returns>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static int Execute(string command, Elevation elevation) =>
 		ExecuteAsync(command, elevation).Result;
 
@@ -54,6 +61,8 @@ public static class RunCommand
 	/// </param>
 	/// <param name="elevation">The privilege level under which to run the command.</param>
 	/// <returns>The exit code of the executed process.</returns>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static int Execute(string command, OutputHandler outputHandler, Elevation elevation) =>
 		ExecuteAsync(command, outputHandler, elevation).Result;
 
@@ -99,6 +108,8 @@ public static class RunCommand
 	/// </summary>
 	/// <param name="command">The command to execute.</param>
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static async Task<int> ExecuteAsync(string command)
 		=> await ExecuteAsync(command, new OutputHandler()).ConfigureAwait(false);
 
@@ -108,6 +119,8 @@ public static class RunCommand
 	/// <param name="command">The command to execute.</param>
 	/// <param name="outputHandler">The handler for processing command output.</param>
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static async Task<int> ExecuteAsync(string command, OutputHandler outputHandler)
 		=> await ExecuteAsync(command, outputHandler, Elevation.Default).ConfigureAwait(false);
 
@@ -117,6 +130,8 @@ public static class RunCommand
 	/// <param name="command">The command to execute.</param>
 	/// <param name="elevation">The privilege level under which to run the command.</param>
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static async Task<int> ExecuteAsync(string command, Elevation elevation)
 		=> await ExecuteAsync(command, new(), elevation).ConfigureAwait(false);
 
@@ -131,6 +146,8 @@ public static class RunCommand
 	/// </param>
 	/// <param name="elevation">The privilege level under which to run the command.</param>
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static async Task<int> ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation)
 		=> await ExecuteAsync(command, outputHandler, elevation, CancellationToken.None).ConfigureAwait(false);
 
@@ -142,6 +159,8 @@ public static class RunCommand
 	/// A token that, when cancelled, terminates the running process and its children.
 	/// </param>
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static async Task<int> ExecuteAsync(string command, CancellationToken cancellationToken)
 		=> await ExecuteAsync(command, new OutputHandler(), cancellationToken).ConfigureAwait(false);
 
@@ -155,6 +174,8 @@ public static class RunCommand
 	/// A token that, when cancelled, terminates the running process and its children.
 	/// </param>
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static async Task<int> ExecuteAsync(string command, OutputHandler outputHandler, CancellationToken cancellationToken)
 		=> await ExecuteAsync(command, outputHandler, Elevation.Default, cancellationToken).ConfigureAwait(false);
 
@@ -174,6 +195,8 @@ public static class RunCommand
 	/// </param>
 	/// <returns>A task representing the asynchronous operation with the process exit code.</returns>
 	/// <exception cref="OperationCanceledException">The token was cancelled before the process exited.</exception>
+	[Obsolete("A command string is split on its first space, which cannot handle an executable path "
+		+ "containing spaces. Use the overload taking a file name and an argument list instead.")]
 	public static async Task<int> ExecuteAsync(string command, OutputHandler outputHandler, Elevation elevation, CancellationToken cancellationToken)
 	{
 		Ensure.NotNull(command);
