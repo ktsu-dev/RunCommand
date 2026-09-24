@@ -1,12 +1,6 @@
-## v1.6.0 (minor)
+## v1.6.1 (patch)
 
-Changes since v1.5.0:
+Changes since v1.6.0:
 
-- Make the byte-emitting test harness work on Windows and self-diagnose ([@Claude](https://github.com/Claude))
-- Honour OutputHandler.Encoding regardless of a byte order mark ([@Claude](https://github.com/Claude))
-- Gate Dependabot auto-merge on CI actually being green ([@Claude](https://github.com/Claude))
-- ci: adopt the consolidated .NET workflow [patch] ([@Claude](https://github.com/Claude))
-- ci: make the SonarQube quality gate opt in [patch] ([@matt-edmondson](https://github.com/matt-edmondson))
-- ci: adopt the unified dotnet workflow [patch] ([@matt-edmondson](https://github.com/matt-edmondson))
-- docs: refresh README, CLAUDE.md, DESCRIPTION and TAGS for the 1.5.0 API ([@matt-edmondson](https://github.com/matt-edmondson))
+- Bump the ktsu group with 2 updates ([@dependabot[bot]](https://github.com/dependabot[bot]))
 
