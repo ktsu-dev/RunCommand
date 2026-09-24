@@ -462,7 +462,7 @@ public static class RunCommand
 		}
 		else
 		{
-			AsyncProcessStreamReader outputReader = new(process, outputHandler);
+			using AsyncProcessStreamReader outputReader = new(process, outputHandler);
 			await Task.WhenAll(outputReader.Start(), process.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
 		}
 
