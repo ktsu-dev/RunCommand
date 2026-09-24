@@ -3,6 +3,7 @@
 namespace ktsu.RunCommand;
 
 using System.Diagnostics;
+using System.Threading;
 
 internal sealed class AsyncProcessStreamReader(Process process, OutputHandler outputHandler) : IDisposable
 {
@@ -32,8 +33,34 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 		errorStream.Dispose();
 	}
 
-	internal async Task Start()
+	/// <summary>
+	/// Pumps the process's standard output and standard error to the handler until both pipes reach
+	/// end of stream, or until <paramref name="cancellationToken"/> is signalled.
+	/// </summary>
+	/// <remarks>
+	/// A read of a redirected pipe returns on new data or on end of stream, and nothing else — there
+	/// is no token that reaches into it, and a pipe read is not reliably interruptible even on the
+	/// targets whose <see cref="StreamReader"/> offers a cancellable overload. So cancellation is
+	/// handled by giving up on the pending read rather than by cancelling it.
+	/// <para>
+	/// That distinction is the whole point. End of stream means every handle on the write end has
+	/// closed, and killing the command closes only the handles the command itself held: one that a
+	/// descendant inherited and carried past its parent's death keeps the pipe open. Waiting for end
+	/// of stream after a kill therefore waits on something that may never happen, which left a
+	/// cancelled call hanging indefinitely.
+	/// </para>
+	/// </remarks>
+	/// <param name="cancellationToken">The token the caller cancelled the run with.</param>
+	internal async Task Start(CancellationToken cancellationToken)
 	{
+		TaskCompletionSource<bool> cancellationSource = new();
+
+		using CancellationTokenRegistration registration = cancellationToken.Register(
+			static state => ((TaskCompletionSource<bool>)state!).TrySetResult(true),
+			cancellationSource);
+
+		Task cancelled = cancellationSource.Task;
+
 		Task outputTask = Task.CompletedTask;
 		Task errorTask = Task.CompletedTask;
 
@@ -59,16 +86,69 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 				errorTask = ReadAndCallback(errorStream, errorBuffer, outputHandler.HandleStandardErrorData, isStandardOutput: false);
 			}
 
-			await Task.WhenAny(outputTask, errorTask).ConfigureAwait(false);
+			Task first = await Task.WhenAny(outputTask, errorTask, cancelled).ConfigureAwait(false);
 
+			if (ReferenceEquals(first, cancelled))
+			{
+				Abandon(outputTask, errorTask);
+				return;
+			}
 		} while (!process.HasExited);
 
-		await Task.WhenAll(outputTask, errorTask).ConfigureAwait(false);
+		if (!await DrainOrAbandon(outputTask, errorTask, cancelled).ConfigureAwait(false))
+		{
+			return;
+		}
 
 		// Read any remaining data after process exit.
 		outputTask = ReadAndCallback(outputStream, outputBuffer, outputHandler.HandleStandardOutputData, isStandardOutput: true);
 		errorTask = ReadAndCallback(errorStream, errorBuffer, outputHandler.HandleStandardErrorData, isStandardOutput: false);
-		await Task.WhenAll(outputTask, errorTask).ConfigureAwait(false);
+		_ = await DrainOrAbandon(outputTask, errorTask, cancelled).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Waits for both reads to finish, unless cancellation gets there first.
+	/// </summary>
+	/// <returns>
+	/// <see langword="true"/> when both reads finished, so the caller may carry on;
+	/// <see langword="false"/> when cancellation won and the reads were abandoned.
+	/// </returns>
+	private static async Task<bool> DrainOrAbandon(Task outputTask, Task errorTask, Task cancelled)
+	{
+		Task reads = Task.WhenAll(outputTask, errorTask);
+
+		if (ReferenceEquals(await Task.WhenAny(reads, cancelled).ConfigureAwait(false), cancelled))
+		{
+			Abandon(outputTask, errorTask);
+			return false;
+		}
+
+		// Awaited rather than returned so that a read that failed still throws here, which is what
+		// carries a decode error out to the caller.
+		await reads.ConfigureAwait(false);
+		return true;
+	}
+
+	/// <summary>
+	/// Leaves reads this call has given up on to end however they end, observing the result.
+	/// </summary>
+	/// <remarks>
+	/// Disposing the readers ends an abandoned read, but it ends by faulting, and a faulted task
+	/// nobody ever looks at raises <see cref="TaskScheduler.UnobservedTaskException"/> when it is
+	/// finalized. Looking at it here keeps a cancelled run from tripping that on an unrelated thread
+	/// later. A read that never ends at all costs a buffer until the process handle is released,
+	/// which is the price of not waiting on a pipe the caller has already walked away from.
+	/// </remarks>
+	private static void Abandon(params Task[] reads)
+	{
+		foreach (Task read in reads)
+		{
+			_ = read.ContinueWith(
+				static abandoned => _ = abandoned.Exception,
+				CancellationToken.None,
+				TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+				TaskScheduler.Default);
+		}
 	}
 
 	private async Task ReadAndCallback(StreamReader streamReader, char[] buffer, Action<string>? onData, bool isStandardOutput) =>

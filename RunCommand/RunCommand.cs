@@ -463,7 +463,7 @@ public static class RunCommand
 		else
 		{
 			using AsyncProcessStreamReader outputReader = new(process, outputHandler);
-			await Task.WhenAll(outputReader.Start(), process.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
+			await Task.WhenAll(outputReader.Start(cancellationToken), process.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
 		}
 
 		// Cancellation reaches the wait two ways at once: the registration above kills the process,

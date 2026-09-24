@@ -469,6 +469,44 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public async Task ExecuteAsyncShouldReturnWhenCancelledWhileADetachedDescendantHoldsTheOutputPipe()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Needs a shell that can orphan a child out of its own process tree while that child keeps the pipe it inherited. The wait this covers is in platform independent code, so the other legs cover it.");
+		}
+
+		using CancellationTokenSource cancellationTokenSource = new();
+
+		// The inner shell backgrounds a sleep and exits immediately, so that sleep is reparented to
+		// init and is no longer a descendant the entire-process-tree kill can walk to — but it still
+		// holds the standard output and standard error handles it inherited. The outer sleep keeps
+		// the process this call owns alive, so cancellation is what ends it. Killing that process
+		// therefore closes neither pipe's write end, and end of stream never arrives.
+		//
+		// setsid is not enough here: it gives the child its own session but leaves its parent alone,
+		// so the kill still reaches it.
+		Task<int> execution = RunCommand.ExecuteAsync(
+			"sh",
+			["-c", "sh -c 'sleep 30 &'; sleep 30"],
+			new OutputHandler(),
+			cancellationTokenSource.Token);
+
+		await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+
+		// Bounded rather than a bare await: before the fix this call never returns, and a test that
+		// hangs takes the whole run down with it instead of reporting a failure.
+		Task finished = await Task.WhenAny(execution, Task.Delay(TimeSpan.FromSeconds(10))).ConfigureAwait(false);
+
+		Assert.AreSame(
+			execution,
+			finished,
+			"Expected a cancelled call to return promptly rather than wait on a pipe an orphaned descendant still holds open.");
+
+		await Assert.ThrowsAsync<OperationCanceledException>(() => execution).ConfigureAwait(false);
+	}
+
+	[TestMethod]
 	public async Task ExecuteAsyncShouldStartTheProcessInTheGivenWorkingDirectory()
 	{
 		string directory = CreateDirectoryForTest();
