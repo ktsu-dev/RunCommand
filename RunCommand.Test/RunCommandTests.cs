@@ -3,6 +3,7 @@
 namespace ktsu.RunCommand.Test;
 
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Runtime.InteropServices;
 using ktsu.Semantics.Paths;
 
@@ -609,5 +610,94 @@ public class RunCommandTests
 					Elevation = Elevation.Elevated,
 					EnvironmentVariables = new Dictionary<string, string?> { ["ANY"] = "value" },
 				})).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Returns a command that writes a file's bytes to standard output unchanged, as an executable
+	/// plus separate arguments.
+	/// </summary>
+	private static (string FileName, string[] Arguments) GetEmitFileBytesCommand(string path) =>
+		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+			? ("cmd", ["/c", "type", path])
+			: ("cat", [path]);
+
+	private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, throwOnInvalidBytes: true);
+
+	// Writes the given bytes to a file of this test's own, then runs the command that echoes them
+	// back, so the test controls the exact bytes the child process puts on the pipe.
+	private static string RunOverBytes(byte[] bytes, [CallerMemberName] string caller = "")
+	{
+		string path = Path.Join(CreateDirectoryForTest(caller), "bytes.bin");
+		File.WriteAllBytes(path, bytes);
+
+		StringBuilder output = new();
+		(string fileName, string[] arguments) = GetEmitFileBytesCommand(path);
+		_ = RunCommand.Execute(fileName, arguments, new OutputHandler(o => output.Append(o), null, StrictUtf8));
+
+		return output.ToString();
+	}
+
+	[TestMethod]
+	public void OutputEncodingIsNotReplacedByAUtf16ByteOrderMark()
+	{
+		// "hi" in UTF-16LE behind its byte order mark. Process builds its StandardOutput reader with
+		// byte-order-mark detection on, which used to switch the reader to UTF-16LE and return "hi"
+		// even though the caller asked for strict UTF-8 and these are not valid UTF-8 bytes.
+		byte[] bytes = [0xFF, 0xFE, (byte)'h', 0x00, (byte)'i', 0x00];
+
+		AggregateException thrown = Assert.ThrowsExactly<AggregateException>(() => RunOverBytes(bytes));
+		Assert.IsTrue(
+			thrown.Flatten().InnerExceptions.Any(e => e is DecoderFallbackException),
+			$"Expected a decode failure, got: {thrown}");
+	}
+
+	[TestMethod]
+	public void OutputThatIsOnlyAUtf16ByteOrderMarkIsNotReportedAsSuccess()
+	{
+		// The same detection consumed a lone FF FE as a byte order mark, leaving nothing to decode,
+		// so a strict encoding reported no output and no error for bytes it should have rejected.
+		byte[] bytes = [0xFF, 0xFE];
+
+		AggregateException thrown = Assert.ThrowsExactly<AggregateException>(() => RunOverBytes(bytes));
+		Assert.IsTrue(
+			thrown.Flatten().InnerExceptions.Any(e => e is DecoderFallbackException),
+			$"Expected a decode failure, got: {thrown}");
+	}
+
+	[TestMethod]
+	public void AUtf8ByteOrderMarkIsStrippedFromTheStartOfOutput()
+	{
+		// A byte order mark matching the requested encoding is still dropped, so turning the
+		// detection off did not start leaking U+FEFF into captured output.
+		byte[] bytes = [0xEF, 0xBB, 0xBF, (byte)'h', (byte)'e', (byte)'l', (byte)'l', (byte)'o'];
+
+		Assert.AreEqual("hello", RunOverBytes(bytes));
+	}
+
+	[TestMethod]
+	public void ADecodeFailureIsNotDiscardedWhenTheProcessKeepsRunning()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Needs a shell that can emit bytes and then stay alive. The race this covers is in platform independent code, so the other legs cover it.");
+		}
+
+		// The read loop stops when the process exits, so a read that faults while the process is
+		// still running used to be replaced by a fresh read on the next pass and its decode failure
+		// thrown away. Sleeping after the bad byte keeps the process alive long enough for that pass
+		// to happen, which makes the race deterministic rather than roughly one run in six.
+		string path = Path.Join(CreateDirectoryForTest(), "bytes.bin");
+		File.WriteAllBytes(path, [(byte)'o', (byte)'k', 0xFF]);
+
+		StringBuilder output = new();
+		AggregateException thrown = Assert.ThrowsExactly<AggregateException>(
+			() => RunCommand.Execute(
+				"sh",
+				["-c", $"cat '{path}'; sleep 1"],
+				new OutputHandler(o => output.Append(o), null, StrictUtf8)));
+
+		Assert.IsTrue(
+			thrown.Flatten().InnerExceptions.Any(e => e is DecoderFallbackException),
+			$"Expected a decode failure, got: {thrown}");
 	}
 }
