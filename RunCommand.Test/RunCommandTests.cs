@@ -823,8 +823,7 @@ public class RunCommandTests
 	/// report and exits. That is the whole distinction being tested: with standard input closed the
 	/// read ends immediately, and with it inherited from a handle nobody writes to the command waits
 	/// there instead.
-	/// </remarks>
-	/// <remarks>
+	/// <para>
 	/// The Windows arm reports the read through control flow rather than by echoing the variable,
 	/// because neither kind of expansion survives this command line. <c>%line%</c> comes back
 	/// literal — expanding an undefined variable to nothing is batch-file behaviour, not
@@ -835,6 +834,7 @@ public class RunCommandTests
 	/// inherited from the environment cannot make the command report a read that never happened.
 	/// The prompt is left empty by putting nothing between <c>=</c> and the separator, so no prompt
 	/// text reaches the captured output.
+	/// </para>
 	/// </remarks>
 	private static (string FileName, string[] Arguments) GetReadStandardInputCommand() =>
 		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
