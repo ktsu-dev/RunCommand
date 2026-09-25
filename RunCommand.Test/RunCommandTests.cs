@@ -825,17 +825,20 @@ public class RunCommandTests
 	/// there instead.
 	/// </remarks>
 	/// <remarks>
-	/// The Windows arm needs <c>/v:on</c>. At a <c>cmd /c</c> command line an undefined
-	/// <c>%line%</c> is left literal rather than expanding to nothing — that is a batch-file
-	/// behaviour, not a command-line one — so the report came back as <c>read:[%line%]</c> and said
-	/// nothing about the read. Delayed expansion also evaluates <c>!line!</c> when the echo runs
-	/// rather than when the line is parsed, which is what makes it report the read at all. The
-	/// prompt is left empty by putting nothing between <c>=</c> and the separator, so no prompt text
-	/// reaches the captured output.
+	/// The Windows arm reports the read through control flow rather than by echoing the variable,
+	/// because neither kind of expansion survives this command line. <c>%line%</c> comes back
+	/// literal — expanding an undefined variable to nothing is batch-file behaviour, not
+	/// command-line behaviour — and <c>!line!</c> under <c>/v:on</c> came back literal too, so both
+	/// reported <c>read:[%line%]</c> and <c>read:[!line!]</c> instead of saying what the read did.
+	/// <c>if defined</c> is a run-time test on the name, so it needs no expansion at all, and every
+	/// string that reaches standard output is a literal. <c>set line=</c> first, so a variable
+	/// inherited from the environment cannot make the command report a read that never happened.
+	/// The prompt is left empty by putting nothing between <c>=</c> and the separator, so no prompt
+	/// text reaches the captured output.
 	/// </remarks>
 	private static (string FileName, string[] Arguments) GetReadStandardInputCommand() =>
 		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-			? ("cmd", ["/v:on", "/c", "set /p line=&echo read:[!line!]"])
+			? ("cmd", ["/c", "set line=&set /p line=&if defined line (echo read:[unexpected]) else (echo read:[])"])
 			: ("sh", ["-c", "read line; echo \"read:[$line]\""]);
 
 	[TestMethod]
