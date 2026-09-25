@@ -41,4 +41,16 @@ public sealed record CommandOptions
 	/// Gets the privilege level under which to run the command.
 	/// </summary>
 	public Elevation Elevation { get; init; } = Elevation.Default;
+
+	/// <summary>
+	/// Gets what the command's standard input is connected to.
+	/// </summary>
+	/// <remarks>
+	/// Defaults to <see cref="StandardInputMode.Inherit"/>, which is what commands did before this
+	/// option existed. Standard output and standard error are already redirected away from the
+	/// caller's console, so a command that prompts cannot be answered anyway; a caller that is not
+	/// itself a console generally wants <see cref="StandardInputMode.Closed"/>, so that a command
+	/// reading standard input ends rather than waiting on a handle nobody will write to.
+	/// </remarks>
+	public StandardInputMode StandardInput { get; init; } = StandardInputMode.Inherit;
 }

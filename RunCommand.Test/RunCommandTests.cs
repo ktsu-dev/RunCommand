@@ -814,4 +814,101 @@ public class RunCommandTests
 			thrown.Flatten().InnerExceptions.Any(e => e is DecoderFallbackException),
 			$"Expected a decode failure, got: {thrown}");
 	}
+
+	/// <summary>
+	/// Returns a command that reads one line from standard input and then reports what it read.
+	/// </summary>
+	/// <remarks>
+	/// At end of stream the read fails and the variable stays empty, so the command still reaches its
+	/// report and exits. That is the whole distinction being tested: with standard input closed the
+	/// read ends immediately, and with it inherited from a handle nobody writes to the command waits
+	/// there instead.
+	/// </remarks>
+	private static (string FileName, string[] Arguments) GetReadStandardInputCommand() =>
+		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+			? ("cmd", ["/c", "set \"line=\" & set /p line= & echo read:[%line%]"])
+			: ("sh", ["-c", "read line; echo \"read:[$line]\""]);
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldEndACommandThatReadsStandardInputWhenStandardInputIsClosed()
+	{
+		// The token is the assertion. A command whose standard input is redirected but left open waits
+		// on a pipe nobody writes to, exactly as one inheriting an idle handle does, so a regression
+		// on either half ends this test by cancelling it rather than by hanging the suite.
+		using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(30));
+
+		StringBuilder output = new();
+		(string fileName, string[] arguments) = GetReadStandardInputCommand();
+
+		int exitCode = await RunCommand.ExecuteAsync(
+			fileName,
+			arguments,
+			new OutputHandler(o => output.Append(o)),
+			new CommandOptions { StandardInput = StandardInputMode.Closed },
+			cancellation.Token).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode, $"Expected the command to run to completion. Output: {output}");
+		Assert.Contains("read:[]", output.ToString(), $"Expected the read to report end of stream. Output: {output}");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldGiveTheCommandItsOwnStandardInputWhenClosed()
+	{
+		if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+		{
+			Assert.Inconclusive("Needs procfs to name a file descriptor. The redirection this covers is in platform independent code, so the other legs cover it.");
+		}
+
+		// Reaching end of stream does not by itself prove the command got the library's pipe. A caller
+		// whose own standard input is already at end of stream — /dev/null under most test runners —
+		// hands its child the same answer by inheritance, so a change that ignored the option
+		// altogether would still look right there. Comparing the descriptors tells them apart:
+		// redirection always makes a new pipe, so the command's standard input is whatever this
+		// process has only when it was inherited.
+		using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(30));
+
+		string ownStandardInput = File.ResolveLinkTarget("/proc/self/fd/0", returnFinalTarget: false)?.FullName ?? "";
+		Assert.AreNotEqual("", ownStandardInput, "Expected to be able to name this process's own standard input.");
+
+		StringBuilder output = new();
+
+		int exitCode = await RunCommand.ExecuteAsync(
+			"sh",
+			["-c", "readlink /proc/self/fd/0"],
+			new OutputHandler(o => output.Append(o)),
+			new CommandOptions { StandardInput = StandardInputMode.Closed },
+			cancellation.Token).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode, $"Expected the probe to run successfully. Output: {output}");
+
+		string commandStandardInput = output.ToString().Trim();
+		Assert.AreNotEqual(
+			ownStandardInput,
+			commandStandardInput,
+			"Expected the command's standard input to be the library's own pipe rather than this process's inherited handle.");
+		Assert.StartsWith("pipe:", commandStandardInput, $"Expected the command's standard input to be a pipe, got: {commandStandardInput}");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldRejectClosedStandardInputCombinedWithElevation()
+	{
+		if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Elevation only changes how the process is started on Windows.");
+		}
+
+		// Elevation forces UseShellExecute, which has no stream to redirect. Failing loudly beats
+		// starting a command whose standard input is still the caller's, which is the wait the option
+		// was asked for to avoid.
+		await Assert.ThrowsAsync<ArgumentException>(
+			() => RunCommand.ExecuteAsync(
+				"cmd",
+				["/c", "exit 0"],
+				new OutputHandler(),
+				new CommandOptions
+				{
+					Elevation = Elevation.Elevated,
+					StandardInput = StandardInputMode.Closed,
+				})).ConfigureAwait(false);
+	}
 }

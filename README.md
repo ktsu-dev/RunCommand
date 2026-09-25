@@ -235,6 +235,26 @@ Environment variables are the only control surface some tools expose, so this co
 
 > **_NOTE:_** _`EnvironmentVariables` cannot be combined with `Elevation.Elevated` on Windows. Elevation requires `UseShellExecute`, which offers nowhere to pass an environment, so the call throws `ArgumentException` rather than silently dropping the variables._
 
+### Standard Input
+
+By default a command inherits the calling process's standard input, which is what an interactive command needs. That is a hazard anywhere the caller is not a console: if the inherited handle stays open without ever producing data, a command that reads it waits there, and the run ends only when you cancel it. Standard output and standard error are already redirected away from your console, so a command that prompts cannot be answered anyway.
+
+Set `StandardInputMode.Closed` to give the command its own standard input and close it, so a read reports end of stream instead:
+
+```csharp
+int exitCode = RunCommand.Execute(
+    "git",
+    ["fetch", "--prune"],
+    new OutputHandler(Console.Write, Console.Error.Write),
+    new CommandOptions { StandardInput = StandardInputMode.Closed });
+```
+
+This is what a long-running host wants — a service, a daemon, a background worker — where a command that waits forever is a hang rather than an error. It also isolates the command from your own standard input, so nothing it reads can consume input you meant to read yourself.
+
+`GIT_TERMINAL_PROMPT=0` and similar environment settings cover the case where a tool deliberately prompts, but not a command that simply reads standard input for its own reasons; closing the stream covers both.
+
+> **_NOTE:_** _`StandardInputMode.Closed` cannot be combined with `Elevation.Elevated` on Windows. Elevation requires `UseShellExecute`, which offers no stream to redirect, so the call throws `ArgumentException` rather than starting a command whose standard input is still yours._
+
 ## Elevation (Windows)
 
 To run a command with elevated privileges, set `Elevation.Elevated`. On Windows this launches the process with the `runas` verb, which triggers a UAC prompt:
@@ -345,6 +365,16 @@ Record describing how to shape the process a command runs in. Every member defau
 | `WorkingDirectory` | `AbsoluteDirectoryPath?` | The directory the process starts in, or `null` to inherit the caller's current directory. |
 | `EnvironmentVariables` | `IReadOnlyDictionary<string, string?>?` | Variables applied over the inherited environment, or `null` to inherit it unchanged. A `null` value removes a variable. |
 | `Elevation` | `Elevation` | The privilege level under which to run the command. Defaults to `Elevation.Default`. |
+| `StandardInput` | `StandardInputMode` | What the command's standard input is connected to. Defaults to `StandardInputMode.Inherit`. |
+
+### `StandardInputMode`
+
+Enum specifying what a command's standard input is connected to.
+
+| Name | Description |
+|------|-------------|
+| `Inherit` | Inherit the calling process's standard input. A command reading an inherited handle that never produces data waits until it closes. |
+| `Closed` | Redirect the command's standard input and close it, so a read reports end of stream. Cannot be combined with `Elevation.Elevated` on Windows. |
 
 ### `OutputHandler`
 
