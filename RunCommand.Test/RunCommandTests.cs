@@ -824,9 +824,18 @@ public class RunCommandTests
 	/// read ends immediately, and with it inherited from a handle nobody writes to the command waits
 	/// there instead.
 	/// </remarks>
+	/// <remarks>
+	/// The Windows arm needs <c>/v:on</c>. At a <c>cmd /c</c> command line an undefined
+	/// <c>%line%</c> is left literal rather than expanding to nothing — that is a batch-file
+	/// behaviour, not a command-line one — so the report came back as <c>read:[%line%]</c> and said
+	/// nothing about the read. Delayed expansion also evaluates <c>!line!</c> when the echo runs
+	/// rather than when the line is parsed, which is what makes it report the read at all. The
+	/// prompt is left empty by putting nothing between <c>=</c> and the separator, so no prompt text
+	/// reaches the captured output.
+	/// </remarks>
 	private static (string FileName, string[] Arguments) GetReadStandardInputCommand() =>
 		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-			? ("cmd", ["/c", "set \"line=\" & set /p line= & echo read:[%line%]"])
+			? ("cmd", ["/v:on", "/c", "set /p line=&echo read:[!line!]"])
 			: ("sh", ["-c", "read line; echo \"read:[$line]\""]);
 
 	[TestMethod]
