@@ -1,6 +1,6 @@
-## v1.6.2 (patch)
+## v1.6.3 (patch)
 
-Changes since v1.6.1:
+Changes since v1.6.2:
 
-- Bound the output pump by the cancellation token [patch] ([@Claude](https://github.com/Claude))
+- Bump the ktsu group with 2 updates ([@dependabot[bot]](https://github.com/dependabot[bot]))
 
