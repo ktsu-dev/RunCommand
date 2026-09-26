@@ -938,9 +938,14 @@ public class RunCommandTests
 
 			// The loss depends on how far the reads have got when the process exits, so one clean
 			// run proves little. Repeat it.
+			StringBuilder output = new();
 			for (int attempt = 0; attempt < 10; attempt++)
 			{
-				StringBuilder output = new();
+				lock (output)
+				{
+					output.Clear();
+				}
+
 				int exitCode = await RunCommand.ExecuteAsync(
 					fileName,
 					arguments,
