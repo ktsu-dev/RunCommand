@@ -5,6 +5,9 @@ namespace ktsu.RunCommand.Test;
 [TestClass]
 public class LineOutputHandlerTests
 {
+	private static readonly string[] ExpectedXY = ["x", "y"];
+	private static readonly string[] ExpectedEveryLineEndingKind = ["a", "b", "c", "d", ""];
+
 	[TestMethod]
 	public void HandleStandardOutputDataShouldProcessLinesCorrectly()
 	{
@@ -93,5 +96,67 @@ public class LineOutputHandlerTests
 		// Assert
 		Assert.AreEqual(expectedLines.Length, index);
 		Assert.AreEqual("Incomplete", handler.errorBuffer);
+	}
+
+	[TestMethod]
+	public void HandleStandardOutputDataShouldTreatCrlfSplitAcrossChunksAsOneLineBreak()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+
+		// Act
+		handler.HandleStandardOutputData("x\r");
+		handler.HandleStandardOutputData("\ny\n");
+
+		// Assert
+		CollectionAssert.AreEqual(ExpectedXY, lines);
+		Assert.AreEqual(string.Empty, handler.outputBuffer);
+	}
+
+	[TestMethod]
+	public void HandleStandardErrorDataShouldTreatCrlfSplitAcrossChunksAsOneLineBreak()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardError: lines.Add);
+
+		// Act
+		handler.HandleStandardErrorData("x\r");
+		handler.HandleStandardErrorData("\ny\n");
+
+		// Assert
+		CollectionAssert.AreEqual(ExpectedXY, lines);
+		Assert.AreEqual(string.Empty, handler.errorBuffer);
+	}
+
+	[TestMethod]
+	public void HandleStandardOutputDataShouldHoldBackTrailingCarriageReturn()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+
+		// Act
+		handler.HandleStandardOutputData("x\r");
+
+		// Assert
+		Assert.AreEqual(0, lines.Count);
+		Assert.AreEqual("x\r", handler.outputBuffer);
+	}
+
+	[TestMethod]
+	public void HandleStandardOutputDataShouldSplitOnEveryLineEndingKind()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+
+		// Act
+		handler.HandleStandardOutputData("a\r\nb\rc\nd\r\n\r\ne");
+
+		// Assert
+		CollectionAssert.AreEqual(ExpectedEveryLineEndingKind, lines);
+		Assert.AreEqual("e", handler.outputBuffer);
 	}
 }
