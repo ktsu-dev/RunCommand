@@ -146,9 +146,11 @@ of the few places conditional compilation is warranted.
 
 ### Stream reading
 
-`AsyncProcessStreamReader` reads stdout and stderr concurrently with 4096-character buffers and
-performs a final read after process exit, which is what ensures short-lived processes do not lose
-buffered output.
+`AsyncProcessStreamReader` reads stdout and stderr concurrently with 4096-character buffers, and
+keeps reading each one until it reports end of stream rather than stopping when the process exits.
+A process can exit with tens of kilobytes still in the pipe, so stopping at exit loses output. Each
+read is raced against the caller's cancellation token, so a descendant that keeps the pipe open
+cannot hang a cancelled call.
 
 ### Process configuration
 

@@ -923,4 +923,43 @@ public class RunCommandTests
 					StandardInput = StandardInputMode.Closed,
 				})).ConfigureAwait(false);
 	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldDeliverOutputStillInThePipeWhenTheProcessExits()
+	{
+		// Far more than one 4096-character read and more than a Linux pipe's 64 KB, from a command
+		// that exits as soon as it has written it, so most of the output is still unread at exit.
+		const int length = 200_000;
+		string path = Path.GetTempFileName();
+		try
+		{
+			await File.WriteAllBytesAsync(path, [.. Enumerable.Repeat((byte)'a', length)]).ConfigureAwait(false);
+			(string fileName, string[] arguments) = GetEmitFileBytesCommand(path);
+
+			// The loss depends on how far the reads have got when the process exits, so one clean
+			// run proves little. Repeat it.
+			for (int attempt = 0; attempt < 10; attempt++)
+			{
+				StringBuilder output = new();
+				int exitCode = await RunCommand.ExecuteAsync(
+					fileName,
+					arguments,
+					new OutputHandler(o =>
+					{
+						lock (output)
+						{
+							output.Append(o);
+						}
+					}),
+					new CommandOptions()).ConfigureAwait(false);
+
+				Assert.AreEqual(0, exitCode, "Expected exit code to be 0 for successful command.");
+				Assert.AreEqual(length, output.Length, $"Output was truncated on attempt {attempt + 1}.");
+			}
+		}
+		finally
+		{
+			File.Delete(path);
+		}
+	}
 }
