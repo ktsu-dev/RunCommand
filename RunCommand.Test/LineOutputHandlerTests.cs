@@ -110,7 +110,7 @@ public class LineOutputHandlerTests
 		handler.HandleStandardOutputData("\ny\n");
 
 		// Assert
-		CollectionAssert.AreEqual(ExpectedXY, lines);
+		Assert.AreSequenceEqual(ExpectedXY, lines);
 		Assert.AreEqual(string.Empty, handler.outputBuffer);
 	}
 
@@ -126,7 +126,7 @@ public class LineOutputHandlerTests
 		handler.HandleStandardErrorData("\ny\n");
 
 		// Assert
-		CollectionAssert.AreEqual(ExpectedXY, lines);
+		Assert.AreSequenceEqual(ExpectedXY, lines);
 		Assert.AreEqual(string.Empty, handler.errorBuffer);
 	}
 
@@ -141,7 +141,7 @@ public class LineOutputHandlerTests
 		handler.HandleStandardOutputData("x\r");
 
 		// Assert
-		Assert.AreEqual(0, lines.Count);
+		Assert.IsEmpty(lines);
 		Assert.AreEqual("x\r", handler.outputBuffer);
 	}
 
@@ -156,7 +156,7 @@ public class LineOutputHandlerTests
 		handler.HandleStandardOutputData("a\r\nb\rc\nd\r\n\r\ne");
 
 		// Assert
-		CollectionAssert.AreEqual(ExpectedEveryLineEndingKind, lines);
+		Assert.AreSequenceEqual(ExpectedEveryLineEndingKind, lines);
 		Assert.AreEqual("e", handler.outputBuffer);
 	}
 }

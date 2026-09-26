@@ -66,7 +66,8 @@ public class LineOutputHandler : OutputHandler
 	{
 		buffer += data;
 		int lineStart = 0;
-		for (int i = 0; i < buffer.Length; i++)
+		int i = 0;
+		while (i < buffer.Length)
 		{
 			char c = buffer[i];
 			if (c == '\r')
@@ -77,17 +78,18 @@ public class LineOutputHandler : OutputHandler
 				}
 
 				onLineReceived?.Invoke(buffer[lineStart..i]);
-				if (buffer[i + 1] == '\n')
-				{
-					i++;
-				}
-
-				lineStart = i + 1;
+				i += buffer[i + 1] == '\n' ? 2 : 1;
+				lineStart = i;
 			}
 			else if (IsLineBreak(c))
 			{
 				onLineReceived?.Invoke(buffer[lineStart..i]);
-				lineStart = i + 1;
+				i++;
+				lineStart = i;
+			}
+			else
+			{
+				i++;
 			}
 		}
 
