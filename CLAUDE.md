@@ -53,11 +53,12 @@ The test project targets `net10.0` only.
 ### Key Files
 
 - `RunCommand/RunCommand.cs` - Static class holding the whole public execution API and the private `CreateStartInfo`/`RunAsync`/`TryKill` core
-- `RunCommand/CommandOptions.cs` - Record carrying process-shaping settings (working directory, environment variables, elevation)
+- `RunCommand/CommandOptions.cs` - Record carrying process-shaping settings (working directory, environment variables, elevation, standard input)
 - `RunCommand/OutputHandler.cs` - Base output handler delivering raw chunks
 - `RunCommand/LineOutputHandler.cs` - Derived handler that buffers chunks into complete lines
 - `RunCommand/AsyncProcessStreamReader.cs` - Internal concurrent reader for stdout and stderr
 - `RunCommand/Elevation.cs` - Enum selecting the privilege level
+- `RunCommand/StandardInputMode.cs` - Enum selecting what standard input is connected to
 
 ### Dependencies
 
@@ -113,10 +114,29 @@ builds can only kill the process itself.
 
 ### Elevation constraints
 
-Elevation forces `UseShellExecute = true`, which is incompatible with both output redirection and
-setting an environment. Consequently an `OutputHandler` is silently not invoked under elevation
-(documented behaviour), while combining `EnvironmentVariables` with elevation throws
-`ArgumentException` up front rather than failing opaquely inside `Process.Start`.
+Elevation forces `UseShellExecute = true`, which is incompatible with output redirection, setting an
+environment, and redirecting standard input. Consequently an `OutputHandler` is silently not invoked
+under elevation (documented behaviour), while combining either `EnvironmentVariables` or
+`StandardInputMode.Closed` with elevation throws `ArgumentException` up front rather than failing
+opaquely inside `Process.Start`.
+
+### Standard input
+
+Standard input is inherited by default, which is what commands did before `CommandOptions.StandardInput`
+existed and what an interactive command needs. `StandardInputMode.Closed` redirects it and closes the
+stream immediately after `Process.Start`, so a command that reads it sees end of stream.
+
+Both halves are load-bearing. Redirecting alone leaves the command holding a pipe nobody writes to,
+which is the same wait as inheriting; closing is what turns a read into end of stream. Callers that
+are not consoles — services, daemons, background workers — want `Closed`, because an inherited handle
+that stays open without producing data turns a command that reads it into a hang that ends only on
+cancellation.
+
+Testing this needs care. A test runner whose own standard input is already at end of stream hands a
+child the same answer by inheritance, so a behavioural test alone passes even when the option is
+ignored entirely. `ExecuteAsyncShouldGiveTheCommandItsOwnStandardInputWhenClosed` compares
+`/proc/self/fd/0` between the caller and the command to pin the redirection itself, and is Linux-only
+for that reason.
 
 ### Argument escaping
 

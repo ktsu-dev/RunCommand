@@ -321,6 +321,17 @@ public static class RunCommand
 		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 		useElevation = options.Elevation == Elevation.Elevated && isWindows;
 
+		if (useElevation && options.StandardInput == StandardInputMode.Closed)
+		{
+			// Same reason as the environment check below: UseShellExecute offers no stream to
+			// redirect, so the request cannot be honoured. Saying so beats starting a command whose
+			// standard input is still the caller's, which is the hang StandardInputMode.Closed exists
+			// to prevent.
+			throw new ArgumentException(
+				"Standard input cannot be closed for an elevated command, because elevation requires UseShellExecute.",
+				nameof(options));
+		}
+
 		if (useElevation && options.EnvironmentVariables is not null)
 		{
 			// Elevation needs UseShellExecute, which starts the process through the shell and offers
@@ -354,6 +365,7 @@ public static class RunCommand
 			startInfo.RedirectStandardError = true;
 			startInfo.StandardOutputEncoding = outputHandler.Encoding;
 			startInfo.StandardErrorEncoding = outputHandler.Encoding;
+			startInfo.RedirectStandardInput = options.StandardInput == StandardInputMode.Closed;
 			startInfo.UseShellExecute = false;
 
 			if (options.EnvironmentVariables is not null)
@@ -451,6 +463,13 @@ public static class RunCommand
 		using Process process = new() { StartInfo = startInfo };
 
 		process.Start();
+
+		if (startInfo.RedirectStandardInput)
+		{
+			// Redirecting alone would leave the command holding a pipe nobody writes to, which is the
+			// same wait as inheriting. Closing it is what turns a read into end of stream.
+			process.StandardInput.Close();
+		}
 
 		// Killing the process is what makes the await actually stop: without it a cancelled wait
 		// would leave the child running unsupervised.
