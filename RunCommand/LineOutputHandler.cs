@@ -58,17 +58,48 @@ public class LineOutputHandler : OutputHandler
 	/// <param name="data">The data to be processed.</param>
 	/// <param name="buffer">The buffer to store incomplete lines.</param>
 	/// <param name="onLineReceived">The action to be invoked for each complete line received.</param>
+	/// <remarks>
+	/// Line endings are recognised on the buffered text rather than on each chunk, so a CRLF split across two
+	/// reads is still one line break. A trailing CR stays in the buffer until the next chunk shows whether an LF follows.
+	/// </remarks>
 	private static void ProcessDataByLine(string data, ref string buffer, Action<string>? onLineReceived)
 	{
-		buffer += data.ReplaceLineEndings();
-		while (buffer.Contains(Environment.NewLine))
+		buffer += data;
+		int lineStart = 0;
+		int i = 0;
+		while (i < buffer.Length)
 		{
-			string[] split = buffer.Split(Environment.NewLine, 2);
-			buffer = split.Length == 1
-				? string.Empty
-				: split[1];
+			char c = buffer[i];
+			if (c == '\r')
+			{
+				if (i == buffer.Length - 1)
+				{
+					break;
+				}
 
-			onLineReceived?.Invoke(split[0]);
+				onLineReceived?.Invoke(buffer[lineStart..i]);
+				i += buffer[i + 1] == '\n' ? 2 : 1;
+				lineStart = i;
+			}
+			else if (IsLineBreak(c))
+			{
+				onLineReceived?.Invoke(buffer[lineStart..i]);
+				i++;
+				lineStart = i;
+			}
+			else
+			{
+				i++;
+			}
 		}
+
+		buffer = buffer[lineStart..];
 	}
+
+	/// <summary>
+	/// Determines whether a character other than CR ends a line, matching the set <c>string.ReplaceLineEndings</c> recognises.
+	/// </summary>
+	/// <param name="c">The character to test.</param>
+	/// <returns><see langword="true"/> if <paramref name="c"/> is LF, NEL, LS, PS or FF; otherwise <see langword="false"/>.</returns>
+	private static bool IsLineBreak(char c) => c is '\n' or '\u0085' or '\u2028' or '\u2029' or '\f';
 }
