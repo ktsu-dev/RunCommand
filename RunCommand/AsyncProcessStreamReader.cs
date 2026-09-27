@@ -61,48 +61,11 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 
 		Task cancelled = cancellationSource.Task;
 
-		Task outputTask = Task.CompletedTask;
-		Task errorTask = Task.CompletedTask;
-
-		// Continuously read until the process has exited.
-		do
-		{
-			// A faulted task is a completed one, so without this the checks below would replace a
-			// failed read with a fresh one and the failure it carries would never be observed. That
-			// made a decode error on a long-running command a coin toss: it surfaced only when the
-			// process happened to exit before the loop came back around.
-			if (outputTask.IsFaulted || errorTask.IsFaulted)
-			{
-				break;
-			}
-
-			if (outputTask.IsCompleted)
-			{
-				outputTask = ReadAndCallback(outputStream, outputBuffer, outputHandler.HandleStandardOutputData, isStandardOutput: true);
-			}
-
-			if (errorTask.IsCompleted)
-			{
-				errorTask = ReadAndCallback(errorStream, errorBuffer, outputHandler.HandleStandardErrorData, isStandardOutput: false);
-			}
-
-			Task first = await Task.WhenAny(outputTask, errorTask, cancelled).ConfigureAwait(false);
-
-			if (ReferenceEquals(first, cancelled))
-			{
-				Abandon(outputTask, errorTask);
-				return;
-			}
-		} while (!process.HasExited);
-
-		if (!await DrainOrAbandon(outputTask, errorTask, cancelled).ConfigureAwait(false))
-		{
-			return;
-		}
-
-		// Read any remaining data after process exit.
-		outputTask = ReadAndCallback(outputStream, outputBuffer, outputHandler.HandleStandardOutputData, isStandardOutput: true);
-		errorTask = ReadAndCallback(errorStream, errorBuffer, outputHandler.HandleStandardErrorData, isStandardOutput: false);
+		// Each stream is read until it reports end of stream, not merely until the process exits. A
+		// process can exit with far more output still sitting in the pipe than one read returns, and
+		// stopping at exit plus a final read silently dropped everything past the first few kilobytes.
+		Task outputTask = ReadToEnd(outputStream, outputBuffer, outputHandler.HandleStandardOutputData, isStandardOutput: true);
+		Task errorTask = ReadToEnd(errorStream, errorBuffer, outputHandler.HandleStandardErrorData, isStandardOutput: false);
 		_ = await DrainOrAbandon(outputTask, errorTask, cancelled).ConfigureAwait(false);
 	}
 
@@ -151,26 +114,25 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 		}
 	}
 
-	private async Task ReadAndCallback(StreamReader streamReader, char[] buffer, Action<string>? onData, bool isStandardOutput) =>
-		await streamReader.ReadAsync(buffer, 0, buffer.Length)
-			.ContinueWith(t => ReadCallback(t, buffer, onData, isStandardOutput), TaskScheduler.Current)
-			.ConfigureAwait(false);
-
-	private void ReadCallback(Task<int> readTask, char[] buffer, Action<string>? onData, bool isStandardOutput)
+	/// <summary>
+	/// Reads a stream until it reports end of stream, handing each chunk to <paramref name="onData"/>.
+	/// </summary>
+	/// <param name="streamReader">The stream to read.</param>
+	/// <param name="buffer">The buffer each read fills.</param>
+	/// <param name="onData">The handler each chunk is passed to.</param>
+	/// <param name="isStandardOutput">Whether the stream is standard output.</param>
+	private async Task ReadToEnd(StreamReader streamReader, char[] buffer, Action<string>? onData, bool isStandardOutput)
 	{
-		int charsRead = readTask.Result;
-
-		if (charsRead <= 0)
+		int charsRead;
+		while ((charsRead = await streamReader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
 		{
-			return;
-		}
+			string data = new(buffer, 0, charsRead);
+			data = StripLeadingByteOrderMark(data, isStandardOutput);
 
-		string data = new(buffer, 0, charsRead);
-		data = StripLeadingByteOrderMark(data, isStandardOutput);
-
-		if (data.Length > 0)
-		{
-			onData?.Invoke(data);
+			if (data.Length > 0)
+			{
+				onData?.Invoke(data);
+			}
 		}
 	}
 
