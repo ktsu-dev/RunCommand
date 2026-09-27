@@ -7,6 +7,9 @@ public class LineOutputHandlerTests
 {
 	private static readonly string[] ExpectedXY = ["x", "y"];
 	private static readonly string[] ExpectedEveryLineEndingKind = ["a", "b", "c", "d", ""];
+	private static readonly string[] ExpectedALast = ["a", "last"];
+	private static readonly string[] ExpectedALastNext = ["a", "last", "next"];
+	private static readonly string[] ExpectedOops = ["oops"];
 
 	[TestMethod]
 	public void HandleStandardOutputDataShouldProcessLinesCorrectly()
@@ -158,5 +161,71 @@ public class LineOutputHandlerTests
 		// Assert
 		Assert.AreSequenceEqual(ExpectedEveryLineEndingKind, lines);
 		Assert.AreEqual("e", handler.outputBuffer);
+	}
+
+	[TestMethod]
+	public void CompleteShouldDeliverTheFinalUnterminatedLine()
+	{
+		// Arrange
+		List<string> output = [];
+		List<string> error = [];
+		LineOutputHandler handler = new(onStandardOutput: output.Add, onStandardError: error.Add);
+		handler.HandleStandardOutputData("a\nlast");
+		handler.HandleStandardErrorData("oops");
+
+		// Act
+		handler.Complete();
+
+		// Assert
+		Assert.AreSequenceEqual(ExpectedALast, output);
+		Assert.AreSequenceEqual(ExpectedOops, error);
+		Assert.AreEqual("", handler.outputBuffer);
+		Assert.AreEqual("", handler.errorBuffer);
+	}
+
+	[TestMethod]
+	public void CompleteShouldNotEmitAnExtraLineWhenOutputEndsOnALineBreak()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+		handler.HandleStandardOutputData("a\nlast\n");
+
+		// Act
+		handler.Complete();
+
+		// Assert
+		Assert.AreSequenceEqual(ExpectedALast, lines);
+	}
+
+	[TestMethod]
+	public void CompleteShouldTreatATrailingCarriageReturnAsALineBreak()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+		handler.HandleStandardOutputData("a\rlast\r");
+
+		// Act
+		handler.Complete();
+
+		// Assert
+		Assert.AreSequenceEqual(ExpectedALast, lines);
+	}
+
+	[TestMethod]
+	public void CompleteShouldKeepAPartialLineFromLeakingIntoTheNextRun()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+		handler.HandleStandardOutputData("a\nlast");
+		handler.Complete();
+
+		// Act
+		handler.HandleStandardOutputData("next\n");
+
+		// Assert
+		Assert.AreSequenceEqual(ExpectedALastNext, lines);
 	}
 }

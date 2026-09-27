@@ -60,4 +60,10 @@ public class OutputHandler
 		Ensure.NotNull(data);
 		OnStandardError?.Invoke(data);
 	}
+
+	/// <summary>
+	/// Called once both output streams have been read to their end and the process has exited,
+	/// so a handler that holds back partial data can deliver it. Not called when the run is cancelled.
+	/// </summary>
+	internal virtual void Complete() { }
 }
