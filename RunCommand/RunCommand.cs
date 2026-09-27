@@ -492,6 +492,13 @@ public static class RunCommand
 		// never mistaken for a command that genuinely failed.
 		cancellationToken.ThrowIfCancellationRequested();
 
+		if (!useElevation)
+		{
+			// Both streams have been read to their end, so anything a handler is still holding back
+			// waiting for a line break will never get one.
+			outputHandler.Complete();
+		}
+
 		return process.ExitCode;
 	}
 

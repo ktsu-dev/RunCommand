@@ -11,6 +11,9 @@ using ktsu.Semantics.Paths;
 [TestClass]
 public class RunCommandTests
 {
+	private static readonly string[] ExpectedALast = ["a", "last"];
+	private static readonly string[] ExpectedALastNext = ["a", "last", "next"];
+
 	private static string GetCopyCommand(string source, string destination) =>
 		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
 			? $"cmd /c copy \"{source}\" \"{destination}\""
@@ -965,6 +968,44 @@ public class RunCommandTests
 		finally
 		{
 			File.Delete(path);
+		}
+	}
+
+	/// <summary>
+	/// Returns a command that prints a file's contents unchanged.
+	/// </summary>
+	private static (string FileName, string[] Arguments) GetPrintFileCommand(string path) =>
+		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+			? ("cmd", ["/c", "type", path])
+			: ("cat", [path]);
+
+	[TestMethod]
+	public async Task LineOutputHandlerShouldDeliverAFinalLineWithoutALineBreakAndNotCarryItIntoTheNextRun()
+	{
+		string first = Path.Join(Path.GetTempPath(), $"{nameof(RunCommandTests)}.{nameof(LineOutputHandlerShouldDeliverAFinalLineWithoutALineBreakAndNotCarryItIntoTheNextRun)}.1.txt");
+		string second = Path.Join(Path.GetTempPath(), $"{nameof(RunCommandTests)}.{nameof(LineOutputHandlerShouldDeliverAFinalLineWithoutALineBreakAndNotCarryItIntoTheNextRun)}.2.txt");
+		await File.WriteAllTextAsync(first, "a\nlast").ConfigureAwait(false);
+		await File.WriteAllTextAsync(second, "next\n").ConfigureAwait(false);
+
+		try
+		{
+			List<string> lines = [];
+			LineOutputHandler handler = new(onStandardOutput: lines.Add);
+
+			(string fileName, string[] arguments) = GetPrintFileCommand(first);
+			int exitCode = await RunCommand.ExecuteAsync(fileName, arguments, handler).ConfigureAwait(false);
+			Assert.AreEqual(0, exitCode);
+			Assert.AreSequenceEqual(ExpectedALast, lines);
+
+			(fileName, arguments) = GetPrintFileCommand(second);
+			exitCode = await RunCommand.ExecuteAsync(fileName, arguments, handler).ConfigureAwait(false);
+			Assert.AreEqual(0, exitCode);
+			Assert.AreSequenceEqual(ExpectedALastNext, lines);
+		}
+		finally
+		{
+			File.Delete(first);
+			File.Delete(second);
 		}
 	}
 }

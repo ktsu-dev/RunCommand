@@ -53,6 +53,37 @@ public class LineOutputHandler : OutputHandler
 	}
 
 	/// <summary>
+	/// Delivers the text left in each buffer as a final line, since no line break will now arrive to end it,
+	/// and leaves both buffers empty so a later run on this handler starts clean.
+	/// </summary>
+	internal override void Complete()
+	{
+		FlushBuffer(ref outputBuffer, OnStandardOutput);
+		FlushBuffer(ref errorBuffer, OnStandardError);
+	}
+
+	/// <summary>
+	/// Invokes <paramref name="onLineReceived"/> with the buffered final line, if there is one, and clears the buffer.
+	/// </summary>
+	/// <param name="buffer">The buffer holding an incomplete line.</param>
+	/// <param name="onLineReceived">The action to be invoked for the final line.</param>
+	/// <remarks>
+	/// A buffer that ends in a CR is a line whose break had not yet been confirmed as CR or CRLF.
+	/// At the end of the stream it is a CR on its own, so it ends the line rather than being part of it.
+	/// </remarks>
+	private static void FlushBuffer(ref string buffer, Action<string>? onLineReceived)
+	{
+		if (buffer.Length == 0)
+		{
+			return;
+		}
+
+		string line = buffer[^1] == '\r' ? buffer[..^1] : buffer;
+		buffer = "";
+		onLineReceived?.Invoke(line);
+	}
+
+	/// <summary>
 	/// Processes the data by line, invoking the specified action for each line received.
 	/// </summary>
 	/// <param name="data">The data to be processed.</param>
