@@ -472,6 +472,91 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public async Task ExecuteAsyncShouldKillTheProcessTreeEveryTimeItIsCancelled()
+	{
+		if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+		{
+			Assert.Inconclusive("Reads a descendant's state from /proc. The kill this covers is in platform independent code, so the Linux leg covers it.");
+		}
+
+		// A token runs its callbacks newest first, and the wait registers its own after the kill's.
+		// So the wait can observe cancellation, end the call, and dispose the kill's registration
+		// before that callback has run, and the call returns with its whole tree still running. The
+		// wait only wins that race some of the time, which is why this repeats. The shape is a
+		// caller's own deadline linked into its token, which cancels on a timer thread.
+		for (int attempt = 0; attempt < 40; attempt++)
+		{
+			TaskCompletionSource<int> descendant = new(TaskCreationOptions.RunContinuationsAsynchronously);
+			OutputHandler handler = new(
+				chunk =>
+				{
+					if (int.TryParse(chunk.Trim(), out int id))
+					{
+						descendant.TrySetResult(id);
+					}
+				},
+				_ => { });
+
+			using CancellationTokenSource timeout = new(TimeSpan.FromMilliseconds(200));
+			using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken.None, timeout.Token);
+
+			Task<int> execution = RunCommand.ExecuteAsync(
+				"sh",
+				["-c", "sleep 30 & echo $!; wait"],
+				handler,
+				new CommandOptions { StandardInput = StandardInputMode.Closed },
+				linked.Token);
+
+			int descendantId = await descendant.Task.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+
+			await Assert.ThrowsAsync<OperationCanceledException>(() => execution).ConfigureAwait(false);
+
+			Assert.IsTrue(
+				await HasExitedAsync(descendantId).ConfigureAwait(false),
+				$"Attempt {attempt}: descendant {descendantId} was still running after its call was cancelled.");
+		}
+	}
+
+	/// <summary>
+	/// Waits up to five seconds for a process to exit.
+	/// </summary>
+	/// <remarks>
+	/// Reads <c>/proc</c> rather than asking <see cref="Process"/>, because the process is not a child
+	/// of this one: once its parent is killed it is reparented, and it can sit as a zombie until its
+	/// new parent reaps it. A zombie has exited, so it counts as gone.
+	/// </remarks>
+	private static async Task<bool> HasExitedAsync(int processId)
+	{
+		for (int check = 0; check < 50; check++)
+		{
+			string status;
+
+			try
+			{
+				status = await File.ReadAllTextAsync($"/proc/{processId}/stat").ConfigureAwait(false);
+			}
+			catch (IOException)
+			{
+				return true;
+			}
+			catch (UnauthorizedAccessException)
+			{
+				return true;
+			}
+
+			// The state follows the parenthesised command name, which may itself contain spaces.
+			if (status[(status.LastIndexOf(')') + 2)..].StartsWith('Z'))
+			{
+				return true;
+			}
+
+			await Task.Delay(100).ConfigureAwait(false);
+		}
+
+		return false;
+	}
+
+	[TestMethod]
 	public async Task ExecuteAsyncShouldReturnWhenCancelledWhileADetachedDescendantHoldsTheOutputPipe()
 	{
 		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
