@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2026 ktsu-dev contributors
+﻿// Copyright (c) 2023-2026 ktsu-dev contributors
 
 namespace ktsu.RunCommand;
 
@@ -70,25 +70,43 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 	}
 
 	/// <summary>
-	/// Waits for both reads to finish, unless cancellation gets there first.
+	/// Waits for both reads to finish, unless cancellation gets there first or a read fails.
 	/// </summary>
+	/// <remarks>
+	/// A read that fails stops draining its pipe, so the command blocks as soon as it fills that
+	/// pipe, and never closes the other one either. Waiting for the other read to finish would then
+	/// wait forever, so the first failure is thrown straight away, leaving the other read abandoned.
+	/// </remarks>
 	/// <returns>
 	/// <see langword="true"/> when both reads finished, so the caller may carry on;
 	/// <see langword="false"/> when cancellation won and the reads were abandoned.
 	/// </returns>
 	private static async Task<bool> DrainOrAbandon(Task outputTask, Task errorTask, Task cancelled)
 	{
-		Task reads = Task.WhenAll(outputTask, errorTask);
+		List<Task> pending = [outputTask, errorTask, cancelled];
 
-		if (ReferenceEquals(await Task.WhenAny(reads, cancelled).ConfigureAwait(false), cancelled))
+		while (pending.Count > 1)
 		{
-			Abandon(outputTask, errorTask);
-			return false;
+			Task finished = await Task.WhenAny(pending).ConfigureAwait(false);
+
+			if (ReferenceEquals(finished, cancelled))
+			{
+				Abandon(outputTask, errorTask);
+				return false;
+			}
+
+			if (finished.IsFaulted)
+			{
+				Abandon(outputTask, errorTask);
+
+				// Awaited rather than inspected so that the handler's exception, or a decode error
+				// from a strict encoding, reaches the caller as itself.
+				await finished.ConfigureAwait(false);
+			}
+
+			_ = pending.Remove(finished);
 		}
 
-		// Awaited rather than returned so that a read that failed still throws here, which is what
-		// carries a decode error out to the caller.
-		await reads.ConfigureAwait(false);
 		return true;
 	}
 

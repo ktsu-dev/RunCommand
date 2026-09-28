@@ -152,6 +152,11 @@ A process can exit with tens of kilobytes still in the pipe, so stopping at exit
 read is raced against the caller's cancellation token, so a descendant that keeps the pipe open
 cannot hang a cancelled call.
 
+A read that fails (the handler throws, or a strict `Encoding` rejects the bytes) stops draining its
+pipe, so the command blocks as soon as that pipe fills and never exits. The reader therefore throws
+the first failure without waiting for the other stream, and `RunAsync` kills the process tree
+before rethrowing it rather than waiting for an exit that will not come.
+
 ### Process configuration
 
 On Windows, `LoadUserProfile` is set to true for proper environment variable expansion.
