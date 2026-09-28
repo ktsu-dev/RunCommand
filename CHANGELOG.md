@@ -1,6 +1,8 @@
-## v1.9.0
+## v1.9.1-pre.1 (prerelease)
 
-No significant changes detected since v1.9.0.
+Changes since v1.9.0:
+
+- Bump the ktsu group with 2 updates ([@dependabot[bot]](https://github.com/dependabot[bot]))
 
 ## v1.9.0 (minor)
 
@@ -228,8 +230,10 @@ Changes since v1.4.0:
 - docs: correct README, DESCRIPTION and TAGS metadata ([@matt-edmondson](https://github.com/matt-edmondson))
 - Stop Update SDKs failing when there is nothing to update ([@matt-edmondson](https://github.com/matt-edmondson))
 - Fix build against ktsu.Sdk 2.27.0 ([@matt-edmondson](https://github.com/matt-edmondson))
+- Sync .github\workflows\dotnet.yml ([@KtsuTools](https://github.com/KtsuTools))
 - Sync .editorconfig ([@KtsuTools](https://github.com/KtsuTools))
 - Sync global.json ([@KtsuTools](https://github.com/KtsuTools))
+- Sync .github\workflows\dotnet.yml ([@KtsuTools](https://github.com/KtsuTools))
 - chore: update ktsu.Sdk to 2.21.1 [patch] ([@matt-edmondson](https://github.com/matt-edmondson))
 - chore: remove unused SourceLink package versions ([@matt-edmondson](https://github.com/matt-edmondson))
 - chore: remove SourceLink references and fix test attributes ([@matt-edmondson](https://github.com/matt-edmondson))
@@ -254,8 +258,10 @@ Changes since v1.4.27:
 Changes since v1.4.26:
 
 - Fix build against ktsu.Sdk 2.27.0 ([@matt-edmondson](https://github.com/matt-edmondson))
+- Sync .github\workflows\dotnet.yml ([@KtsuTools](https://github.com/KtsuTools))
 - Sync .editorconfig ([@KtsuTools](https://github.com/KtsuTools))
 - Sync global.json ([@KtsuTools](https://github.com/KtsuTools))
+- Sync .github\workflows\dotnet.yml ([@KtsuTools](https://github.com/KtsuTools))
 
 ## v1.4.26 (patch)
 
@@ -443,11 +449,14 @@ Changes since v1.3.0:
 - Use single return path in ExecuteAsync ([@Claude](https://github.com/Claude))
 - Add elevation support to RunCommand ([@Claude](https://github.com/Claude))
 - Add TAGS.md with NuGet package tags ([@matt-edmondson](https://github.com/matt-edmondson))
+- Sync .github\workflows\dotnet.yml ([@KtsuTools](https://github.com/KtsuTools))
 - Remove legacy build scripts ([@matt-edmondson](https://github.com/matt-edmondson))
 - Add CLAUDE.md for project guidance and documentation ([@matt-edmondson](https://github.com/matt-edmondson))
+- Remove .github\workflows\project.yml ([@matt-edmondson](https://github.com/matt-edmondson))
 - Migrate to dotnet 10 ([@matt-edmondson](https://github.com/matt-edmondson))
 - [patch] Force patch ([@matt-edmondson](https://github.com/matt-edmondson))
 - [patch] Force patch ([@matt-edmondson](https://github.com/matt-edmondson))
+- Refactor project files and update SDK references. Remove unused package versions from Directory.Packages.props, enhance PSBuild.psm1 for optional NuGet and Ktsu package publishing, and streamline GitHub Actions workflows for better clarity and functionality. Add CompatibilitySuppressions.xml for compatibility diagnostics. ([@matt-edmondson](https://github.com/matt-edmondson))
 - Update package versions in Directory.Packages.props, enhance PSBuild.psm1 for coverage and release processes, and adjust .runsettings for output directory. Clean up whitespace in multiple files. ([@matt-edmondson](https://github.com/matt-edmondson))
 - Update .editorconfig settings, enhance RunCommand functionality to return exit codes, and add SonarLint configuration ([@matt-edmondson](https://github.com/matt-edmondson))
 - Add project configuration files and update SDK references ([@matt-edmondson](https://github.com/matt-edmondson))
@@ -504,15 +513,16 @@ Changes since v1.3.4:
 Changes since v1.3.3:
 
 - Remove .github\workflows\project.yml ([@matt-edmondson](https://github.com/matt-edmondson))
+
+## v1.3.4-pre.1 (prerelease)
+
+Changes since v1.3.3:
+
 - Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync global.json ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Merge remote-tracking branch 'refs/remotes/origin/main' ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
 - Sync .gitignore ([@ktsu[bot]](https://github.com/ktsu[bot]))
-
-## v1.3.4-pre.1 (prerelease)
-
-No significant changes detected since v1.3.4.
 
 ## v1.3.3 (patch)
 
@@ -542,7 +552,13 @@ Changes since v1.3.3-pre.1:
 
 ## v1.3.3-pre.1 (prerelease)
 
-No significant changes detected since v1.3.3.
+Changes since v1.3.2:
+
+- Sync scripts\PSBuild.psm1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync scripts\update-winget-manifests.ps1 ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .github\workflows\dotnet.yml ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .gitattributes ([@ktsu[bot]](https://github.com/ktsu[bot]))
+- Sync .runsettings ([@ktsu[bot]](https://github.com/ktsu[bot]))
 
 ## v1.3.2 (patch)
 
@@ -550,11 +566,15 @@ Changes since v1.3.1:
 
 - [patch] Force patch ([@matt-edmondson](https://github.com/matt-edmondson))
 - [patch] Force patch ([@matt-edmondson](https://github.com/matt-edmondson))
+- Refactor project files and update SDK references. Remove unused package versions from Directory.Packages.props, enhance PSBuild.psm1 for optional NuGet and Ktsu package publishing, and streamline GitHub Actions workflows for better clarity and functionality. Add CompatibilitySuppressions.xml for compatibility diagnostics. ([@matt-edmondson](https://github.com/matt-edmondson))
 - Update package versions in Directory.Packages.props, enhance PSBuild.psm1 for coverage and release processes, and adjust .runsettings for output directory. Clean up whitespace in multiple files. ([@matt-edmondson](https://github.com/matt-edmondson))
 
 ## v1.3.2-pre.1 (prerelease)
 
-No significant changes detected since v1.3.2.
+Changes since v1.3.1:
+
+- Refactor project files and update SDK references. Remove unused package versions from Directory.Packages.props, enhance PSBuild.psm1 for optional NuGet and Ktsu package publishing, and streamline GitHub Actions workflows for better clarity and functionality. Add CompatibilitySuppressions.xml for compatibility diagnostics. ([@matt-edmondson](https://github.com/matt-edmondson))
+- Update package versions in Directory.Packages.props, enhance PSBuild.psm1 for coverage and release processes, and adjust .runsettings for output directory. Clean up whitespace in multiple files. ([@matt-edmondson](https://github.com/matt-edmondson))
 
 ## v1.3.1 (patch)
 
@@ -575,7 +595,9 @@ Changes since v1.3.1-pre.1:
 
 ## v1.3.1-pre.1 (prerelease)
 
-No significant changes detected since v1.3.1.
+Changes since v1.3.0:
+
+- Sync .editorconfig ([@ktsu[bot]](https://github.com/ktsu[bot]))
 
 ## v1.3.0 (minor)
 
