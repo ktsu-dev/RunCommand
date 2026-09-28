@@ -13,6 +13,7 @@ public class RunCommandTests
 {
 	private static readonly string[] ExpectedALast = ["a", "last"];
 	private static readonly string[] ExpectedALastNext = ["a", "last", "next"];
+	private static readonly string[] ExpectedDone = ["done"];
 
 	private static string GetCopyCommand(string source, string destination) =>
 		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
@@ -969,6 +970,50 @@ public class RunCommandTests
 		{
 			File.Delete(path);
 		}
+	}
+
+	[TestMethod]
+	[DoNotParallelize]
+	public async Task ExecuteAsyncShouldNotSpinWhileACommandThatClosedItsOutputKeepsRunning()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Needs a shell that can close its own output streams and stay alive. The read loop this covers is in platform independent code, so the other legs cover it.");
+		}
+
+		// Standard error reaches end of stream at once while the command runs on. A reader that
+		// keeps reading a stream after end of stream gets 0 back straight away every time, so it
+		// spins on a core for the whole run instead of waiting.
+		const int runMilliseconds = 2000;
+		List<string> output = [];
+
+		using Process self = Process.GetCurrentProcess();
+		TimeSpan before = self.TotalProcessorTime;
+
+		int exitCode = await RunCommand.ExecuteAsync(
+			"sh",
+			["-c", $"exec 2>&-; sleep {runMilliseconds / 1000}; echo done"],
+			new LineOutputHandler(onStandardOutput: line =>
+			{
+				lock (output)
+				{
+					output.Add(line);
+				}
+			})).ConfigureAwait(false);
+
+		self.Refresh();
+		TimeSpan used = self.TotalProcessorTime - before;
+
+		Assert.AreEqual(0, exitCode);
+		Assert.AreSequenceEqual(ExpectedDone, output, "Expected standard output to be delivered in full.");
+
+		// This is process-wide CPU, which is why the test opts out of running alongside the others.
+		// A spinning reader costs at least a full core for the whole run, so half of the run is
+		// clear of the test host's own background work and still well short of a spin.
+		Assert.IsLessThan(
+			runMilliseconds / 2,
+			used.TotalMilliseconds,
+			$"Expected the reader to wait rather than spin, but the process used {used.TotalMilliseconds:F0} ms of CPU during a {runMilliseconds} ms run.");
 	}
 
 	/// <summary>
