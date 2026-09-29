@@ -475,14 +475,27 @@ public static class RunCommand
 		// would leave the child running unsupervised.
 		using CancellationTokenRegistration registration = cancellationToken.Register(() => TryKill(process));
 
-		if (useElevation)
+		try
 		{
-			await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+			if (useElevation)
+			{
+				await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+			}
+			else
+			{
+				using AsyncProcessStreamReader outputReader = new(process, outputHandler);
+				await Task.WhenAll(outputReader.Start(cancellationToken), process.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
+			}
 		}
-		else
+		catch (OperationCanceledException)
 		{
-			using AsyncProcessStreamReader outputReader = new(process, outputHandler);
-			await Task.WhenAll(outputReader.Start(cancellationToken), process.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
+			// The registration alone does not guarantee the kill. A token runs its callbacks newest
+			// first, and the wait registered its own after this one, so the wait can end this call
+			// and dispose the registration before the kill callback has run. That leaves the whole
+			// tree running unsupervised. Killing here as well makes it certain; a second kill of a
+			// process that has already gone is a no-op.
+			TryKill(process);
+			throw;
 		}
 
 		// Cancellation reaches the wait two ways at once: the registration above kills the process,
