@@ -1,8 +1,8 @@
-## v1.9.2 (patch)
+## v1.9.3 (patch)
 
-Changes since v1.9.1:
+Changes since v1.9.2:
 
-- Move CI onto the shared ci-shared.yml pipeline ([@Claude](https://github.com/Claude))
-- Merge main into claude/kill-on-read-fault ([@Claude](https://github.com/Claude))
-- Kill the command and rethrow when an output read fails [patch] ([@Claude](https://github.com/Claude))
+- Split the pending-CR handling out of ProcessDataByLine ([@Claude](https://github.com/Claude))
+- Mark the line buffers readonly ([@Claude](https://github.com/Claude))
+- Scan only new data in LineOutputHandler so long lines cost linear time [patch] ([@Claude](https://github.com/Claude))
 
