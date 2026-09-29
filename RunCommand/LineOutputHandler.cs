@@ -107,17 +107,7 @@ public class LineOutputHandler : OutputHandler
 			return;
 		}
 
-		int i = 0;
-		if (buffer.Length > 0 && buffer[^1] == '\r')
-		{
-			buffer.Length--;
-			EmitLine(buffer, data, 0, 0, onLineReceived);
-			if (data[0] == '\n')
-			{
-				i = 1;
-			}
-		}
-
+		int i = CompletePendingCarriageReturn(data, buffer, onLineReceived);
 		int lineStart = i;
 		while (i < data.Length)
 		{
@@ -146,6 +136,26 @@ public class LineOutputHandler : OutputHandler
 		}
 
 		buffer.Append(data, lineStart, data.Length - lineStart);
+	}
+
+	/// <summary>
+	/// Ends the buffered line when the previous read finished on a CR, now that <paramref name="data"/> shows whether
+	/// an LF follows it.
+	/// </summary>
+	/// <param name="data">The newly arrived data, which must not be empty.</param>
+	/// <param name="buffer">The buffer holding an incomplete line.</param>
+	/// <param name="onLineReceived">The action to be invoked for the completed line.</param>
+	/// <returns>The index in <paramref name="data"/> to resume scanning from: 1 to skip the LF of a CRLF, otherwise 0.</returns>
+	private static int CompletePendingCarriageReturn(string data, StringBuilder buffer, Action<string>? onLineReceived)
+	{
+		if (buffer.Length == 0 || buffer[^1] != '\r')
+		{
+			return 0;
+		}
+
+		buffer.Length--;
+		EmitLine(buffer, data, 0, 0, onLineReceived);
+		return data[0] == '\n' ? 1 : 0;
 	}
 
 	/// <summary>
