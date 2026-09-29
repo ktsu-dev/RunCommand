@@ -13,12 +13,12 @@ public class LineOutputHandler : OutputHandler
 	/// <summary>
 	/// Buffer to store incomplete lines from standard output.
 	/// </summary>
-	internal StringBuilder outputBuffer = new();
+	internal readonly StringBuilder outputBuffer = new();
 
 	/// <summary>
 	/// Buffer to store incomplete lines from standard error.
 	/// </summary>
-	internal StringBuilder errorBuffer = new();
+	internal readonly StringBuilder errorBuffer = new();
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="LineOutputHandler"/> class.
