@@ -10,6 +10,7 @@ public class LineOutputHandlerTests
 	private static readonly string[] ExpectedALast = ["a", "last"];
 	private static readonly string[] ExpectedALastNext = ["a", "last", "next"];
 	private static readonly string[] ExpectedOops = ["oops"];
+	private static readonly string[] ExpectedCrlfAcrossReads = ["a", "b", "", "c"];
 
 	[TestMethod]
 	public void HandleStandardOutputDataShouldProcessLinesCorrectly()
@@ -75,7 +76,7 @@ public class LineOutputHandlerTests
 
 		// Assert
 		Assert.AreEqual(expectedLines.Length, index);
-		Assert.AreEqual("Incomplete", handler.outputBuffer);
+		Assert.AreEqual("Incomplete", handler.outputBuffer.ToString());
 	}
 
 	[TestMethod]
@@ -98,7 +99,7 @@ public class LineOutputHandlerTests
 
 		// Assert
 		Assert.AreEqual(expectedLines.Length, index);
-		Assert.AreEqual("Incomplete", handler.errorBuffer);
+		Assert.AreEqual("Incomplete", handler.errorBuffer.ToString());
 	}
 
 	[TestMethod]
@@ -114,7 +115,7 @@ public class LineOutputHandlerTests
 
 		// Assert
 		Assert.AreSequenceEqual(ExpectedXY, lines);
-		Assert.AreEqual(string.Empty, handler.outputBuffer);
+		Assert.AreEqual(string.Empty, handler.outputBuffer.ToString());
 	}
 
 	[TestMethod]
@@ -130,7 +131,7 @@ public class LineOutputHandlerTests
 
 		// Assert
 		Assert.AreSequenceEqual(ExpectedXY, lines);
-		Assert.AreEqual(string.Empty, handler.errorBuffer);
+		Assert.AreEqual(string.Empty, handler.errorBuffer.ToString());
 	}
 
 	[TestMethod]
@@ -145,7 +146,7 @@ public class LineOutputHandlerTests
 
 		// Assert
 		Assert.IsEmpty(lines);
-		Assert.AreEqual("x\r", handler.outputBuffer);
+		Assert.AreEqual("x\r", handler.outputBuffer.ToString());
 	}
 
 	[TestMethod]
@@ -160,7 +161,7 @@ public class LineOutputHandlerTests
 
 		// Assert
 		Assert.AreSequenceEqual(ExpectedEveryLineEndingKind, lines);
-		Assert.AreEqual("e", handler.outputBuffer);
+		Assert.AreEqual("e", handler.outputBuffer.ToString());
 	}
 
 	[TestMethod]
@@ -179,8 +180,8 @@ public class LineOutputHandlerTests
 		// Assert
 		Assert.AreSequenceEqual(ExpectedALast, output);
 		Assert.AreSequenceEqual(ExpectedOops, error);
-		Assert.AreEqual("", handler.outputBuffer);
-		Assert.AreEqual("", handler.errorBuffer);
+		Assert.AreEqual("", handler.outputBuffer.ToString());
+		Assert.AreEqual("", handler.errorBuffer.ToString());
 	}
 
 	[TestMethod]
@@ -227,5 +228,49 @@ public class LineOutputHandlerTests
 
 		// Assert
 		Assert.AreSequenceEqual(ExpectedALastNext, lines);
+	}
+
+	[TestMethod]
+	public void HandleStandardOutputDataShouldTreatALineBreakSplitAcrossReadsAsOne()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+
+		// Act
+		handler.HandleStandardOutputData("a\r");
+		handler.HandleStandardOutputData("\nb\r");
+		handler.HandleStandardOutputData("\r");
+		handler.HandleStandardOutputData("c\n");
+
+		// Assert
+		Assert.AreSequenceEqual(ExpectedCrlfAcrossReads, lines);
+		Assert.AreEqual("", handler.outputBuffer.ToString());
+	}
+
+	[TestMethod]
+	public void HandleStandardOutputDataShouldBeLinearInTheLengthOfALongLine()
+	{
+		// Arrange
+		const int chunkCount = 1024;
+		const int chunkLength = 4096;
+		string chunk = new('a', chunkLength);
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+		System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+		// Act
+		for (int i = 0; i < chunkCount; i++)
+		{
+			handler.HandleStandardOutputData(chunk);
+		}
+
+		handler.HandleStandardOutputData("\n");
+		stopwatch.Stop();
+
+		// Assert
+		Assert.HasCount(1, lines);
+		Assert.AreEqual(chunkCount * chunkLength, lines[0].Length);
+		Assert.IsLessThan(TimeSpan.FromSeconds(2), stopwatch.Elapsed, $"4 MB in 4 KB reads took {stopwatch.Elapsed}");
 	}
 }
