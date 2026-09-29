@@ -1101,6 +1101,84 @@ public class RunCommandTests
 			$"Expected the reader to wait rather than spin, but the process used {used.TotalMilliseconds:F0} ms of CPU during a {runMilliseconds} ms run.");
 	}
 
+	[TestMethod]
+	public async Task ExecuteAsyncShouldThrowAndKillTheCommandWhenTheOutputHandlerThrows() =>
+		await AssertAFaultedReadEndsTheCall(
+			"echo first",
+			new OutputHandler(_ => throw new InvalidOperationException("handler failed"))).ConfigureAwait(false);
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldThrowAndKillTheCommandWhenAStrictEncodingRejectsTheOutput() =>
+		await AssertAFaultedReadEndsTheCall(
+			@"printf '\377\n'",
+			new OutputHandler(encoding: new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true))).ConfigureAwait(false);
+
+	/// <summary>
+	/// Runs a command that makes the first read fault and then writes far more than a pipe holds,
+	/// and requires the call to rethrow that fault promptly with the command no longer running.
+	/// </summary>
+	/// <remarks>
+	/// A faulted read stops draining its pipe, so the command blocks writing to it and never exits.
+	/// Waiting for that exit is what hung the call.
+	/// </remarks>
+	private static async Task AssertAFaultedReadEndsTheCall(string faultingOutput, OutputHandler handler, [CallerMemberName] string testName = "")
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Needs procfs to tell whether the command is still running. The fault handling this covers is in platform independent code, so the other legs cover it.");
+		}
+
+		string pidFile = Path.Join(Path.GetTempPath(), $"{nameof(RunCommandTests)}.{testName}.pid");
+		File.Delete(pidFile);
+
+		try
+		{
+			// exec keeps the writer on the pid written to the file, so the check below looks at the
+			// very process that is blocked on the full pipe.
+			Task<int> execution = RunCommand.ExecuteAsync(
+				"sh",
+				["-c", $"echo $$ > '{pidFile}'; {faultingOutput}; sleep 0.5; exec head -c 1000000 /dev/zero"],
+				handler);
+
+			// Bounded rather than a bare await: before the fix this call never returns.
+			Task finished = await Task.WhenAny(execution, Task.Delay(TimeSpan.FromSeconds(10))).ConfigureAwait(false);
+
+			Assert.AreSame(execution, finished, "Expected a faulted read to end the call rather than wait on a command blocked writing to it.");
+			Assert.IsTrue(execution.IsFaulted, "Expected the fault to reach the caller.");
+			Assert.IsNotInstanceOfType<OperationCanceledException>(execution.Exception!.InnerException);
+
+			string pid = (await File.ReadAllTextAsync(pidFile).ConfigureAwait(false)).Trim();
+			Assert.IsFalse(IsRunning(pid), $"Expected the command (pid {pid}) to have been killed.");
+		}
+		finally
+		{
+			File.Delete(pidFile);
+		}
+	}
+
+	/// <summary>
+	/// Reports whether a process is still running, counting a zombie as gone since it has exited.
+	/// </summary>
+	private static bool IsRunning(string pid)
+	{
+		string statPath = $"/proc/{pid}/stat";
+		if (!File.Exists(statPath))
+		{
+			return false;
+		}
+
+		try
+		{
+			string stat = File.ReadAllText(statPath);
+			// The state follows the parenthesised command name, which may itself contain spaces.
+			return stat[stat.LastIndexOf(')') + 2] != 'Z';
+		}
+		catch (IOException)
+		{
+			return false;
+		}
+	}
+
 	/// <summary>
 	/// Returns a command that prints a file's contents unchanged.
 	/// </summary>

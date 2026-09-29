@@ -484,7 +484,21 @@ public static class RunCommand
 			else
 			{
 				using AsyncProcessStreamReader outputReader = new(process, outputHandler);
-				await Task.WhenAll(outputReader.Start(cancellationToken), process.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
+
+				try
+				{
+					await outputReader.Start(cancellationToken).ConfigureAwait(false);
+				}
+				catch
+				{
+					// A failed read has stopped draining a pipe, so the command blocks once it fills it
+					// and would never exit on its own. Kill it so the failure can be reported rather
+					// than waited on, and so the command is not left behind blocked on the write.
+					TryKill(process);
+					throw;
+				}
+
+				await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 			}
 		}
 		catch (OperationCanceledException)
