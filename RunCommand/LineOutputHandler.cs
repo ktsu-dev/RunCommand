@@ -13,12 +13,12 @@ public class LineOutputHandler : OutputHandler
 	/// <summary>
 	/// Buffer to store incomplete lines from standard output.
 	/// </summary>
-	internal string outputBuffer = "";
+	internal readonly StringBuilder outputBuffer = new();
 
 	/// <summary>
 	/// Buffer to store incomplete lines from standard error.
 	/// </summary>
-	internal string errorBuffer = "";
+	internal readonly StringBuilder errorBuffer = new();
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="LineOutputHandler"/> class.
@@ -38,7 +38,7 @@ public class LineOutputHandler : OutputHandler
 	internal override void HandleStandardOutputData(string data)
 	{
 		Ensure.NotNull(data);
-		ProcessDataByLine(data, ref outputBuffer, OnStandardOutput);
+		ProcessDataByLine(data, outputBuffer, OnStandardOutput);
 	}
 
 	/// <summary>
@@ -49,7 +49,7 @@ public class LineOutputHandler : OutputHandler
 	internal override void HandleStandardErrorData(string data)
 	{
 		Ensure.NotNull(data);
-		ProcessDataByLine(data, ref errorBuffer, OnStandardError);
+		ProcessDataByLine(data, errorBuffer, OnStandardError);
 	}
 
 	/// <summary>
@@ -58,8 +58,8 @@ public class LineOutputHandler : OutputHandler
 	/// </summary>
 	internal override void Complete()
 	{
-		FlushBuffer(ref outputBuffer, OnStandardOutput);
-		FlushBuffer(ref errorBuffer, OnStandardError);
+		FlushBuffer(outputBuffer, OnStandardOutput);
+		FlushBuffer(errorBuffer, OnStandardError);
 	}
 
 	/// <summary>
@@ -71,15 +71,20 @@ public class LineOutputHandler : OutputHandler
 	/// A buffer that ends in a CR is a line whose break had not yet been confirmed as CR or CRLF.
 	/// At the end of the stream it is a CR on its own, so it ends the line rather than being part of it.
 	/// </remarks>
-	private static void FlushBuffer(ref string buffer, Action<string>? onLineReceived)
+	private static void FlushBuffer(StringBuilder buffer, Action<string>? onLineReceived)
 	{
 		if (buffer.Length == 0)
 		{
 			return;
 		}
 
-		string line = buffer[^1] == '\r' ? buffer[..^1] : buffer;
-		buffer = "";
+		if (buffer[^1] == '\r')
+		{
+			buffer.Length--;
+		}
+
+		string line = buffer.ToString();
+		buffer.Clear();
 		onLineReceived?.Invoke(line);
 	}
 
@@ -90,31 +95,37 @@ public class LineOutputHandler : OutputHandler
 	/// <param name="buffer">The buffer to store incomplete lines.</param>
 	/// <param name="onLineReceived">The action to be invoked for each complete line received.</param>
 	/// <remarks>
-	/// Line endings are recognised on the buffered text rather than on each chunk, so a CRLF split across two
-	/// reads is still one line break. A trailing CR stays in the buffer until the next chunk shows whether an LF follows.
+	/// Line endings are recognised across reads, so a CRLF split across two reads is still one line break.
+	/// A trailing CR stays in the buffer until the next chunk shows whether an LF follows.
+	/// Only the newly arrived <paramref name="data"/> is scanned, and the partial line is appended to rather than
+	/// copied, so the cost is linear in the output size however long a line grows.
 	/// </remarks>
-	private static void ProcessDataByLine(string data, ref string buffer, Action<string>? onLineReceived)
+	private static void ProcessDataByLine(string data, StringBuilder buffer, Action<string>? onLineReceived)
 	{
-		buffer += data;
-		int lineStart = 0;
-		int i = 0;
-		while (i < buffer.Length)
+		if (data.Length == 0)
 		{
-			char c = buffer[i];
+			return;
+		}
+
+		int i = CompletePendingCarriageReturn(data, buffer, onLineReceived);
+		int lineStart = i;
+		while (i < data.Length)
+		{
+			char c = data[i];
 			if (c == '\r')
 			{
-				if (i == buffer.Length - 1)
+				if (i == data.Length - 1)
 				{
 					break;
 				}
 
-				onLineReceived?.Invoke(buffer[lineStart..i]);
-				i += buffer[i + 1] == '\n' ? 2 : 1;
+				EmitLine(buffer, data, lineStart, i, onLineReceived);
+				i += data[i + 1] == '\n' ? 2 : 1;
 				lineStart = i;
 			}
 			else if (IsLineBreak(c))
 			{
-				onLineReceived?.Invoke(buffer[lineStart..i]);
+				EmitLine(buffer, data, lineStart, i, onLineReceived);
 				i++;
 				lineStart = i;
 			}
@@ -124,7 +135,53 @@ public class LineOutputHandler : OutputHandler
 			}
 		}
 
-		buffer = buffer[lineStart..];
+		buffer.Append(data, lineStart, data.Length - lineStart);
+	}
+
+	/// <summary>
+	/// Ends the buffered line when the previous read finished on a CR, now that <paramref name="data"/> shows whether
+	/// an LF follows it.
+	/// </summary>
+	/// <param name="data">The newly arrived data, which must not be empty.</param>
+	/// <param name="buffer">The buffer holding an incomplete line.</param>
+	/// <param name="onLineReceived">The action to be invoked for the completed line.</param>
+	/// <returns>The index in <paramref name="data"/> to resume scanning from: 1 to skip the LF of a CRLF, otherwise 0.</returns>
+	private static int CompletePendingCarriageReturn(string data, StringBuilder buffer, Action<string>? onLineReceived)
+	{
+		if (buffer.Length == 0 || buffer[^1] != '\r')
+		{
+			return 0;
+		}
+
+		buffer.Length--;
+		EmitLine(buffer, data, 0, 0, onLineReceived);
+		return data[0] == '\n' ? 1 : 0;
+	}
+
+	/// <summary>
+	/// Invokes <paramref name="onLineReceived"/> with the buffered partial line followed by
+	/// <paramref name="data"/> from <paramref name="start"/> up to <paramref name="end"/>, and clears the buffer.
+	/// </summary>
+	/// <param name="buffer">The buffer holding the start of the line from earlier reads.</param>
+	/// <param name="data">The data the rest of the line comes from.</param>
+	/// <param name="start">The index in <paramref name="data"/> where the rest of the line starts.</param>
+	/// <param name="end">The index in <paramref name="data"/> of the line break that ends the line.</param>
+	/// <param name="onLineReceived">The action to be invoked for the line.</param>
+	private static void EmitLine(StringBuilder buffer, string data, int start, int end, Action<string>? onLineReceived)
+	{
+		string line;
+		if (buffer.Length == 0)
+		{
+			line = data[start..end];
+		}
+		else
+		{
+			buffer.Append(data, start, end - start);
+			line = buffer.ToString();
+			buffer.Clear();
+		}
+
+		onLineReceived?.Invoke(line);
 	}
 
 	/// <summary>
