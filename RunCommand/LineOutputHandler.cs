@@ -13,12 +13,17 @@ public class LineOutputHandler : OutputHandler
 	/// <summary>
 	/// Buffer to store incomplete lines from standard output.
 	/// </summary>
-	internal readonly StringBuilder outputBuffer = new();
+	/// <remarks>
+	/// Replaced rather than cleared by <see cref="Reset"/>, so a delivery still in progress from a
+	/// cancelled run finishes into the old buffer instead of the new run's.
+	/// </remarks>
+	internal StringBuilder outputBuffer = new();
 
 	/// <summary>
 	/// Buffer to store incomplete lines from standard error.
 	/// </summary>
-	internal readonly StringBuilder errorBuffer = new();
+	/// <remarks>See <see cref="outputBuffer"/>.</remarks>
+	internal StringBuilder errorBuffer = new();
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="LineOutputHandler"/> class.
@@ -60,6 +65,16 @@ public class LineOutputHandler : OutputHandler
 	{
 		FlushBuffer(outputBuffer, OnStandardOutput);
 		FlushBuffer(errorBuffer, OnStandardError);
+	}
+
+	/// <summary>
+	/// Discards any partial line, including a CR still waiting to see whether an LF follows, that a
+	/// cancelled or failed run left in the buffers.
+	/// </summary>
+	internal override void Reset()
+	{
+		outputBuffer = new();
+		errorBuffer = new();
 	}
 
 	/// <summary>
