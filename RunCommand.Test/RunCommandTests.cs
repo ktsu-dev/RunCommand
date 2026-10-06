@@ -451,6 +451,91 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public async Task CancelShouldNotRunTheCallersContinuationInline()
+	{
+		using CancellationTokenSource cancellationTokenSource = new();
+		(string fileName, string[] arguments) = GetSleepCommand();
+		bool insideCancel = false;
+		bool continuationRanInsideCancel = false;
+
+		Task execution = Task.Run(async () =>
+		{
+			try
+			{
+				_ = await RunCommand.ExecuteAsync(fileName, arguments, new OutputHandler(), cancellationTokenSource.Token).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException)
+			{
+				continuationRanInsideCancel = Volatile.Read(ref insideCancel);
+			}
+		});
+
+		// Give the command time to start, so the cancellation reaches a run that is reading output.
+		await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+
+		Volatile.Write(ref insideCancel, true);
+		CancelSynchronously(cancellationTokenSource);
+		Volatile.Write(ref insideCancel, false);
+
+		Task finished = await Task.WhenAny(execution, Task.Delay(TimeSpan.FromSeconds(10))).ConfigureAwait(false);
+		Assert.AreSame(execution, finished, "Expected the cancelled call to end.");
+		Assert.IsFalse(continuationRanInsideCancel, "Expected the caller's catch block to run after Cancel() returned, not inside it.");
+	}
+
+	[TestMethod]
+	public async Task CancelWhileHoldingALockTheCallersCleanupNeedsShouldNotDeadlock()
+	{
+		using CancellationTokenSource cancellationTokenSource = new();
+		using SemaphoreSlim gate = new(1, 1);
+		(string fileName, string[] arguments) = GetSleepCommand();
+		bool cleanupAcquiredTheLock = false;
+
+		Task execution = Task.Run(async () =>
+		{
+			try
+			{
+				_ = await RunCommand.ExecuteAsync(fileName, arguments, new OutputHandler(), cancellationTokenSource.Token).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException)
+			{
+				// Bounded so that, before the fix, this reports a failure instead of hanging the run:
+				// the cleanup ran inside Cancel(), on the thread that holds the gate.
+				cleanupAcquiredTheLock = WaitSynchronously(gate, TimeSpan.FromSeconds(5));
+				if (cleanupAcquiredTheLock)
+				{
+					_ = gate.Release();
+				}
+			}
+		});
+
+		await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+
+		await gate.WaitAsync().ConfigureAwait(false);
+		Stopwatch cancelTime = Stopwatch.StartNew();
+		try
+		{
+			CancelSynchronously(cancellationTokenSource);
+		}
+		finally
+		{
+			cancelTime.Stop();
+			_ = gate.Release();
+		}
+
+		Task finished = await Task.WhenAny(execution, Task.Delay(TimeSpan.FromSeconds(15))).ConfigureAwait(false);
+		Assert.AreSame(execution, finished, "Expected the cancelled call to end.");
+		Assert.IsTrue(cleanupAcquiredTheLock, $"Expected the caller's cleanup to acquire the lock once Cancel() released it; Cancel() took {cancelTime.ElapsedMilliseconds} ms.");
+	}
+
+	// Cancel() rather than CancelAsync(), because the difference under test is what runs on the
+	// cancelling thread before Cancel() returns.
+	private static void CancelSynchronously(CancellationTokenSource cancellationTokenSource) =>
+		cancellationTokenSource.Cancel();
+
+	private static bool WaitSynchronously(SemaphoreSlim semaphore, TimeSpan timeout) =>
+		semaphore.Wait(timeout);
+
+	[TestMethod]
 	public async Task ExecuteAsyncShouldThrowRatherThanReturnAnExitCodeWhenCancellationWinsTheRace()
 	{
 		(string fileName, string[] arguments) = GetSleepCommand();
