@@ -483,6 +483,91 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public async Task CancelShouldNotRunTheCallersContinuationInline()
+	{
+		using CancellationTokenSource cancellationTokenSource = new();
+		(string fileName, string[] arguments) = GetSleepCommand();
+		bool insideCancel = false;
+		bool continuationRanInsideCancel = false;
+
+		Task execution = Task.Run(async () =>
+		{
+			try
+			{
+				_ = await RunCommand.ExecuteAsync(fileName, arguments, new OutputHandler(), cancellationTokenSource.Token).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException)
+			{
+				continuationRanInsideCancel = Volatile.Read(ref insideCancel);
+			}
+		});
+
+		// Give the command time to start, so the cancellation reaches a run that is reading output.
+		await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+
+		Volatile.Write(ref insideCancel, true);
+		CancelSynchronously(cancellationTokenSource);
+		Volatile.Write(ref insideCancel, false);
+
+		Task finished = await Task.WhenAny(execution, Task.Delay(TimeSpan.FromSeconds(10))).ConfigureAwait(false);
+		Assert.AreSame(execution, finished, "Expected the cancelled call to end.");
+		Assert.IsFalse(continuationRanInsideCancel, "Expected the caller's catch block to run after Cancel() returned, not inside it.");
+	}
+
+	[TestMethod]
+	public async Task CancelWhileHoldingALockTheCallersCleanupNeedsShouldNotDeadlock()
+	{
+		using CancellationTokenSource cancellationTokenSource = new();
+		using SemaphoreSlim gate = new(1, 1);
+		(string fileName, string[] arguments) = GetSleepCommand();
+		bool cleanupAcquiredTheLock = false;
+
+		Task execution = Task.Run(async () =>
+		{
+			try
+			{
+				_ = await RunCommand.ExecuteAsync(fileName, arguments, new OutputHandler(), cancellationTokenSource.Token).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException)
+			{
+				// Bounded so that, before the fix, this reports a failure instead of hanging the run:
+				// the cleanup ran inside Cancel(), on the thread that holds the gate.
+				cleanupAcquiredTheLock = WaitSynchronously(gate, TimeSpan.FromSeconds(5));
+				if (cleanupAcquiredTheLock)
+				{
+					_ = gate.Release();
+				}
+			}
+		});
+
+		await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+
+		await gate.WaitAsync().ConfigureAwait(false);
+		Stopwatch cancelTime = Stopwatch.StartNew();
+		try
+		{
+			CancelSynchronously(cancellationTokenSource);
+		}
+		finally
+		{
+			cancelTime.Stop();
+			_ = gate.Release();
+		}
+
+		Task finished = await Task.WhenAny(execution, Task.Delay(TimeSpan.FromSeconds(15))).ConfigureAwait(false);
+		Assert.AreSame(execution, finished, "Expected the cancelled call to end.");
+		Assert.IsTrue(cleanupAcquiredTheLock, $"Expected the caller's cleanup to acquire the lock once Cancel() released it; Cancel() took {cancelTime.ElapsedMilliseconds} ms.");
+	}
+
+	// Cancel() rather than CancelAsync(), because the difference under test is what runs on the
+	// cancelling thread before Cancel() returns.
+	private static void CancelSynchronously(CancellationTokenSource cancellationTokenSource) =>
+		cancellationTokenSource.Cancel();
+
+	private static bool WaitSynchronously(SemaphoreSlim semaphore, TimeSpan timeout) =>
+		semaphore.Wait(timeout);
+
+	[TestMethod]
 	public async Task ExecuteAsyncShouldThrowRatherThanReturnAnExitCodeWhenCancellationWinsTheRace()
 	{
 		(string fileName, string[] arguments) = GetSleepCommand();
@@ -1246,6 +1331,119 @@ public class RunCommandTests
 		{
 			File.Delete(first);
 			File.Delete(second);
+		}
+	}
+
+	[TestMethod]
+	public async Task ReusedLineOutputHandlerShouldDropTheLineACancelledRunLeftUnfinished()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Needs sh to print a line without a line break. The reset this covers is in platform independent code, so the other legs cover it.");
+		}
+
+		List<string> lines = [];
+		using SemaphoreSlim partialArrived = new(0);
+		LineOutputHandler handler = new(lines.Add);
+
+		using (CancellationTokenSource cancellationTokenSource = new())
+		{
+			Task<int> cancelled = RunCommand.ExecuteAsync(
+				"sh",
+				["-c", "printf partial; sleep 30"],
+				new SignallingLineOutputHandler(handler, partialArrived),
+				cancellationTokenSource.Token);
+
+			Assert.IsTrue(await partialArrived.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false), "Expected the partial line to arrive.");
+			await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+			await Assert.ThrowsAsync<OperationCanceledException>(() => cancelled).ConfigureAwait(false);
+		}
+
+		Assert.AreEqual("partial", handler.outputBuffer.ToString(), "The cancelled run should have left its partial line buffered.");
+
+		int exitCode = await RunCommand.ExecuteAsync("sh", ["-c", "echo hello"], handler).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode);
+		Assert.AreEqual("hello", string.Join(" | ", lines), "The next run's first line should not carry the cancelled run's leftover text.");
+	}
+
+	[TestMethod]
+	public async Task ReusedLineOutputHandlerShouldDropTheLineARunWhoseCallbackThrewLeftUnfinished()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Needs sh to print a line without a line break. The reset this covers is in platform independent code, so the other legs cover it.");
+		}
+
+		List<string> lines = [];
+		bool throwOnError = true;
+		LineOutputHandler handler = new(
+			lines.Add,
+			line =>
+			{
+				if (throwOnError)
+				{
+					throw new InvalidOperationException("handler failed");
+				}
+			});
+
+		// Standard output's partial line is buffered before standard error's line makes the callback throw.
+		await Assert.ThrowsAsync<InvalidOperationException>(
+			() => RunCommand.ExecuteAsync("sh", ["-c", "printf partial; sleep 0.5; echo boom >&2; sleep 30"], handler)).ConfigureAwait(false);
+
+		Assert.AreEqual("partial", handler.outputBuffer.ToString(), "The failed run should have left its partial line buffered.");
+
+		throwOnError = false;
+		int exitCode = await RunCommand.ExecuteAsync("sh", ["-c", "echo hello"], handler).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode);
+		Assert.AreEqual("hello", string.Join(" | ", lines), "The next run's first line should not carry the failed run's leftover text.");
+	}
+
+	[TestMethod]
+	public async Task AbandonedReaderShouldNotDeliverIntoALaterRunOnTheSameHandler()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Needs a shell that can orphan a child out of its own process tree while that child keeps the pipe it inherited. That a cancelled run's reads stop delivering is platform independent, so the other legs cover it.");
+		}
+
+		List<string> lines = [];
+		using SemaphoreSlim partialArrived = new(0);
+		LineOutputHandler handler = new(lines.Add);
+
+		// The orphaned subshell escapes the kill and keeps the cancelled run's standard output open, then
+		// writes to it a second later, while the next run on the same handler is still going. The
+		// cancelled run gave up on that read, so what arrives there must not reach the handler.
+		using (CancellationTokenSource cancellationTokenSource = new())
+		{
+			Task<int> cancelled = RunCommand.ExecuteAsync(
+				"sh",
+				["-c", "sh -c '(sleep 1; printf late) &'; printf partial; sleep 30"],
+				new SignallingLineOutputHandler(handler, partialArrived),
+				cancellationTokenSource.Token);
+
+			Assert.IsTrue(await partialArrived.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false), "Expected the partial line to arrive.");
+			await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+			await Assert.ThrowsAsync<OperationCanceledException>(() => cancelled).ConfigureAwait(false);
+		}
+
+		int exitCode = await RunCommand.ExecuteAsync("sh", ["-c", "sleep 2; echo hello"], handler).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode);
+		Assert.AreEqual("hello", string.Join(" | ", lines), "Output the cancelled run's abandoned reader received should not reach the later run.");
+	}
+
+	/// <summary>
+	/// Forwards standard output to <paramref name="inner"/> and signals <paramref name="received"/> after each chunk,
+	/// so a test can wait for output to arrive before it cancels.
+	/// </summary>
+	private sealed class SignallingLineOutputHandler(LineOutputHandler inner, SemaphoreSlim received) : OutputHandler
+	{
+		internal override void HandleStandardOutputData(string data)
+		{
+			inner.HandleStandardOutputData(data);
+			received.Release();
 		}
 	}
 }

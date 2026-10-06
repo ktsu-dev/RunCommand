@@ -53,7 +53,12 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 	/// <param name="cancellationToken">The token the caller cancelled the run with.</param>
 	internal async Task Start(CancellationToken cancellationToken)
 	{
-		TaskCompletionSource<bool> cancellationSource = new();
+		// Continuations run asynchronously because the token's registration completes this source
+		// from inside CancellationTokenSource.Cancel(). Run synchronously, they took the whole
+		// unwind with them onto the cancelling thread, process-tree kill and the caller's own catch
+		// block included, before Cancel() returned. A caller cancelling while holding a lock its
+		// cleanup also needs then deadlocked.
+		TaskCompletionSource<bool> cancellationSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
 		using CancellationTokenRegistration registration = cancellationToken.Register(
 			static state => ((TaskCompletionSource<bool>)state!).TrySetResult(true),
