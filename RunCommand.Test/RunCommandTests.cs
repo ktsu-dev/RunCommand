@@ -471,10 +471,14 @@ public class RunCommandTests
 				() => RunCommand.TryKill(process, PartlyFailingKill));
 
 			cancellationTokenSource.Cancel();
+			Assert.IsTrue(cancellationTokenSource.IsCancellationRequested, "Expected Cancel() to return normally after the kill failed.");
 
 			// Called directly as well, as the catch blocks in RunAsync do: an exception here would
 			// replace the OperationCanceledException or the handler failure being reported.
 			RunCommand.TryKill(process, PartlyFailingKill);
+
+			// Only the injected kill ran, so the process is still alive for the finally block to end.
+			Assert.IsFalse(process.HasExited, "Expected only the failing kill to have run.");
 		}
 		finally
 		{
