@@ -460,6 +460,10 @@ public static class RunCommand
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 
+		// A handler can be reused, and a run that was cancelled or failed never reached Complete, so
+		// whatever partial line it left behind would otherwise be glued onto this run's first line.
+		outputHandler.Reset();
+
 		using Process process = new() { StartInfo = startInfo };
 
 		process.Start();

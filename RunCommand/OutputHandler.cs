@@ -66,4 +66,11 @@ public class OutputHandler
 	/// so a handler that holds back partial data can deliver it. Not called when the run is cancelled.
 	/// </summary>
 	internal virtual void Complete() { }
+
+	/// <summary>
+	/// Called at the start of every run, so a handler that holds back partial data can discard what an
+	/// earlier run left behind. A run that was cancelled or failed never reaches <see cref="Complete"/>,
+	/// and its leftover text is not a real line, so it is dropped rather than delivered.
+	/// </summary>
+	internal virtual void Reset() { }
 }
