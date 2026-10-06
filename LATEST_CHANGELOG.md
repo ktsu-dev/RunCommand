@@ -1,7 +1,8 @@
-## v1.9.4 (patch)
+## v1.9.5 (patch)
 
-Changes since v1.9.3:
+Changes since v1.9.4:
 
-- [patch] Run continuations of the cancellation signal asynchronously, so Cancel() returns before the unwind ([@matt-edmondson](https://github.com/matt-edmondson))
-- Drop a reused handler's leftover partial line at the start of each run ([@matt-edmondson](https://github.com/matt-edmondson))
+- Assert that Cancel() returns and that only the failing kill ran ([@Claude](https://github.com/Claude))
+- Merge main into fix/107-trykill-aggregate ([@Claude](https://github.com/Claude))
+- [patch] Treat a partly failed process-tree kill as best effort, so Cancel() never throws ([@matt-edmondson](https://github.com/matt-edmondson))
 
