@@ -533,19 +533,26 @@ public static class RunCommand
 		return process.ExitCode;
 	}
 
-	private static void TryKill(Process process)
+	private static void TryKill(Process process) => TryKill(process, Kill);
+
+	/// <summary>
+	/// Kills <paramref name="process"/> through <paramref name="kill"/>, treating every way the kill
+	/// can fail as best effort.
+	/// </summary>
+	/// <remarks>
+	/// This runs inside the cancellation token's registration, so anything it throws comes out of
+	/// the caller's <see cref="CancellationTokenSource.Cancel()"/>, and it runs in catch blocks,
+	/// where anything it throws replaces the exception being reported. It must never throw.
+	/// </remarks>
+	/// <param name="process">The process to kill.</param>
+	/// <param name="kill">Performs the kill. A parameter so tests can make it fail.</param>
+	internal static void TryKill(Process process, Action<Process> kill)
 	{
 		try
 		{
 			if (!process.HasExited)
 			{
-#if NETSTANDARD2_0 || NETSTANDARD2_1
-				// Process.Kill(bool) requires .NET Core 3.0 or later, so the older targets can only
-				// terminate the process itself and not any grandchildren it spawned.
-				process.Kill();
-#else
-				process.Kill(entireProcessTree: true);
-#endif
+				kill(process);
 			}
 		}
 		catch (InvalidOperationException)
@@ -560,5 +567,19 @@ public static class RunCommand
 		{
 			// Terminating a remote process is not supported.
 		}
+		catch (AggregateException)
+		{
+			// Kill(entireProcessTree) reports descendants it could not terminate, such as ones owned
+			// by another user or running elevated, this way. It carries on past each failure, so
+			// everything it could kill has already been killed.
+		}
 	}
+
+#if NETSTANDARD2_0 || NETSTANDARD2_1
+	// Process.Kill(bool) requires .NET Core 3.0 or later, so the older targets can only terminate
+	// the process itself and not any grandchildren it spawned.
+	private static void Kill(Process process) => process.Kill();
+#else
+	private static void Kill(Process process) => process.Kill(entireProcessTree: true);
+#endif
 }

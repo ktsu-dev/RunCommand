@@ -451,6 +451,42 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public void CancelShouldNotThrowWhenTheTreeKillCannotTerminateEveryDescendant()
+	{
+		(string fileName, string[] arguments) = GetSleepCommand();
+		using Process process = Process.Start(new ProcessStartInfo(fileName, arguments) { UseShellExecute = false })!;
+
+		try
+		{
+			// What Process.Kill(entireProcessTree: true) throws when a descendant belongs to another
+			// user or runs elevated.
+			static void PartlyFailingKill(Process _) =>
+				throw new AggregateException(
+					"Not all processes in the process tree could be terminated.",
+					new System.ComponentModel.Win32Exception(1, "Operation not permitted"));
+
+			// Registered the way RunAsync registers its kill, so this is the caller's Cancel().
+			using CancellationTokenSource cancellationTokenSource = new();
+			using CancellationTokenRegistration registration = cancellationTokenSource.Token.Register(
+				() => RunCommand.TryKill(process, PartlyFailingKill));
+
+			cancellationTokenSource.Cancel();
+			Assert.IsTrue(cancellationTokenSource.IsCancellationRequested, "Expected Cancel() to return normally after the kill failed.");
+
+			// Called directly as well, as the catch blocks in RunAsync do: an exception here would
+			// replace the OperationCanceledException or the handler failure being reported.
+			RunCommand.TryKill(process, PartlyFailingKill);
+
+			// Only the injected kill ran, so the process is still alive for the finally block to end.
+			Assert.IsFalse(process.HasExited, "Expected only the failing kill to have run.");
+		}
+		finally
+		{
+			process.Kill(entireProcessTree: true);
+		}
+	}
+
+	[TestMethod]
 	public async Task CancelShouldNotRunTheCallersContinuationInline()
 	{
 		using CancellationTokenSource cancellationTokenSource = new();
