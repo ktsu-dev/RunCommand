@@ -8,6 +8,11 @@ using System.Text;
 /// Handles the output from a command line process, processing both standard output and standard error streams.
 /// It processes the data in undelimited chunks, calling the specified actions for each chunk received.
 /// </summary>
+/// <remarks>
+/// The two streams are read concurrently, but the actions are never run at the same time: each one
+/// returns before the other is called, so both may share state, such as one list collecting all of a
+/// command's output, without locking. Each stream's chunks arrive in the order they were written.
+/// </remarks>
 public class OutputHandler
 {
 	/// <summary>

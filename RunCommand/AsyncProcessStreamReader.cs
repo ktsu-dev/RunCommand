@@ -15,6 +15,11 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 	private bool outputHasEmitted;
 	private bool errorHasEmitted;
 
+	// The two pipes are read concurrently, but their chunks are handed over one at a time. Without
+	// this the standard output and standard error delegates ran inside each other on two thread-pool
+	// threads, and a caller sharing one List<T> or StringBuilder between them lost lines silently.
+	private readonly Lock deliveryLock = new();
+
 	// Read the raw pipes with the caller's encoding rather than through
 	// process.StandardOutput/StandardError. Process builds those StreamReaders with byte-order-mark
 	// detection switched on, which replaces the encoding the caller asked for whenever the output
@@ -152,9 +157,12 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 			string data = new(buffer, 0, charsRead);
 			data = StripLeadingByteOrderMark(data, isStandardOutput);
 
-			if (data.Length > 0)
+			if (data.Length > 0 && onData is not null)
 			{
-				onData?.Invoke(data);
+				lock (deliveryLock)
+				{
+					onData(data);
+				}
 			}
 		}
 	}

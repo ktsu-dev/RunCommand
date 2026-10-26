@@ -1179,6 +1179,56 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public async Task ExecuteAsyncShouldNeverRunTheStandardOutputAndStandardErrorDelegatesAtOnce()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Needs a shell that interleaves many lines across both streams. The delivery this covers is in platform independent code, so the other legs cover it.");
+		}
+
+		// Both delegates add to one List<T>, which is not thread safe, exactly as a caller capturing
+		// a command's whole output would. Run concurrently, overlapping adds overwrite each other's
+		// slots and lines vanish without an exception.
+		const int linesPerStream = 5000;
+
+		// Whether the delegates overlap depends on how the two reads are scheduled, so one clean
+		// run proves little. Repeat it.
+		for (int attempt = 0; attempt < 5; attempt++)
+		{
+			List<string> lines = [];
+			int active = 0;
+			int overlaps = 0;
+
+			void Add(string line)
+			{
+				if (Interlocked.Increment(ref active) > 1)
+				{
+					_ = Interlocked.Increment(ref overlaps);
+				}
+
+				lines.Add(line);
+				Thread.SpinWait(50);
+				_ = Interlocked.Decrement(ref active);
+			}
+
+			int exitCode = await RunCommand.ExecuteAsync(
+				"sh",
+				["-c", $"i=1; while [ $i -le {linesPerStream} ]; do echo out$i; echo err$i >&2; i=$((i+1)); done"],
+				new LineOutputHandler(Add, Add)).ConfigureAwait(false);
+
+			Assert.AreEqual(0, exitCode);
+			Assert.AreEqual(0, overlaps, $"The delegates ran inside each other {overlaps} times on attempt {attempt + 1}.");
+			Assert.HasCount(linesPerStream * 2, lines, $"Lines were lost on attempt {attempt + 1}.");
+
+			// Serialising delivery must not reorder either stream.
+			string[] expectedOut = [.. Enumerable.Range(1, linesPerStream).Select(i => $"out{i}")];
+			string[] expectedErr = [.. Enumerable.Range(1, linesPerStream).Select(i => $"err{i}")];
+			Assert.AreSequenceEqual(expectedOut, [.. lines.Where(l => l.StartsWith("out", StringComparison.Ordinal))]);
+			Assert.AreSequenceEqual(expectedErr, [.. lines.Where(l => l.StartsWith("err", StringComparison.Ordinal))]);
+		}
+	}
+
+	[TestMethod]
 	[DoNotParallelize]
 	public async Task ExecuteAsyncShouldNotSpinWhileACommandThatClosedItsOutputKeepsRunning()
 	{
