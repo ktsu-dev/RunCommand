@@ -1,7 +1,6 @@
-## v1.9.6-pre.3 (prerelease)
+## v1.9.6 (patch)
 
-Changes since v1.9.6-pre.2:
+Changes since v1.9.5:
 
-- Bump ktsu.Semantics.Paths and ktsu.Semantics.Strings (dependabot[bot])
-- Bump Polyfill from 11.4.3 to 11.4.5 (dependabot[bot])
+- [patch] Never run the standard output and standard error delegates at once (Claude)
 
