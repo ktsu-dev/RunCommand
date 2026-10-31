@@ -17,13 +17,13 @@ public class LineOutputHandler : OutputHandler
 	/// Replaced rather than cleared by <see cref="Reset"/>, so a delivery still in progress from a
 	/// cancelled run finishes into the old buffer instead of the new run's.
 	/// </remarks>
-	internal StringBuilder outputBuffer = new();
+	internal LineBuffer outputBuffer = new();
 
 	/// <summary>
 	/// Buffer to store incomplete lines from standard error.
 	/// </summary>
 	/// <remarks>See <see cref="outputBuffer"/>.</remarks>
-	internal StringBuilder errorBuffer = new();
+	internal LineBuffer errorBuffer = new();
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="LineOutputHandler"/> class.
@@ -68,8 +68,8 @@ public class LineOutputHandler : OutputHandler
 	}
 
 	/// <summary>
-	/// Discards any partial line, including a CR still waiting to see whether an LF follows, that a
-	/// cancelled or failed run left in the buffers.
+	/// Discards any partial line, and any LF still due to be skipped after a CR, that a cancelled or
+	/// failed run left in the buffers.
 	/// </summary>
 	internal override void Reset()
 	{
@@ -82,24 +82,17 @@ public class LineOutputHandler : OutputHandler
 	/// </summary>
 	/// <param name="buffer">The buffer holding an incomplete line.</param>
 	/// <param name="onLineReceived">The action to be invoked for the final line.</param>
-	/// <remarks>
-	/// A buffer that ends in a CR is a line whose break had not yet been confirmed as CR or CRLF.
-	/// At the end of the stream it is a CR on its own, so it ends the line rather than being part of it.
-	/// </remarks>
-	private static void FlushBuffer(StringBuilder buffer, Action<string>? onLineReceived)
+	private static void FlushBuffer(LineBuffer buffer, Action<string>? onLineReceived)
 	{
-		if (buffer.Length == 0)
+		buffer.SkipLeadingLineFeed = false;
+
+		if (buffer.Text.Length == 0)
 		{
 			return;
 		}
 
-		if (buffer[^1] == '\r')
-		{
-			buffer.Length--;
-		}
-
-		string line = buffer.ToString();
-		buffer.Clear();
+		string line = buffer.Text.ToString();
+		buffer.Text.Clear();
 		onLineReceived?.Invoke(line);
 	}
 
@@ -111,36 +104,50 @@ public class LineOutputHandler : OutputHandler
 	/// <param name="onLineReceived">The action to be invoked for each complete line received.</param>
 	/// <remarks>
 	/// Line endings are recognised across reads, so a CRLF split across two reads is still one line break.
-	/// A trailing CR stays in the buffer until the next chunk shows whether an LF follows.
+	/// A CR ends its line at once, even as the last character of a read, so a progress or status line
+	/// ending in a bare CR is delivered without waiting for the command's next write. If the next read
+	/// then starts with an LF, that LF completes the CRLF and is skipped rather than ending an empty
+	/// line. This is what <c>Process.OutputDataReceived</c> does.
 	/// Only the newly arrived <paramref name="data"/> is scanned, and the partial line is appended to rather than
 	/// copied, so the cost is linear in the output size however long a line grows.
 	/// </remarks>
-	private static void ProcessDataByLine(string data, StringBuilder buffer, Action<string>? onLineReceived)
+	private static void ProcessDataByLine(string data, LineBuffer buffer, Action<string>? onLineReceived)
 	{
 		if (data.Length == 0)
 		{
 			return;
 		}
 
-		int i = CompletePendingCarriageReturn(data, buffer, onLineReceived);
+		int i = 0;
+		if (buffer.SkipLeadingLineFeed)
+		{
+			buffer.SkipLeadingLineFeed = false;
+			if (data[0] == '\n')
+			{
+				i = 1;
+			}
+		}
+
 		int lineStart = i;
 		while (i < data.Length)
 		{
 			char c = data[i];
 			if (c == '\r')
 			{
+				EmitLine(buffer.Text, data, lineStart, i, onLineReceived);
 				if (i == data.Length - 1)
 				{
-					break;
+					// The LF of a CRLF may arrive with the next read
+					buffer.SkipLeadingLineFeed = true;
+					return;
 				}
 
-				EmitLine(buffer, data, lineStart, i, onLineReceived);
 				i += data[i + 1] == '\n' ? 2 : 1;
 				lineStart = i;
 			}
 			else if (IsLineBreak(c))
 			{
-				EmitLine(buffer, data, lineStart, i, onLineReceived);
+				EmitLine(buffer.Text, data, lineStart, i, onLineReceived);
 				i++;
 				lineStart = i;
 			}
@@ -150,27 +157,7 @@ public class LineOutputHandler : OutputHandler
 			}
 		}
 
-		buffer.Append(data, lineStart, data.Length - lineStart);
-	}
-
-	/// <summary>
-	/// Ends the buffered line when the previous read finished on a CR, now that <paramref name="data"/> shows whether
-	/// an LF follows it.
-	/// </summary>
-	/// <param name="data">The newly arrived data, which must not be empty.</param>
-	/// <param name="buffer">The buffer holding an incomplete line.</param>
-	/// <param name="onLineReceived">The action to be invoked for the completed line.</param>
-	/// <returns>The index in <paramref name="data"/> to resume scanning from: 1 to skip the LF of a CRLF, otherwise 0.</returns>
-	private static int CompletePendingCarriageReturn(string data, StringBuilder buffer, Action<string>? onLineReceived)
-	{
-		if (buffer.Length == 0 || buffer[^1] != '\r')
-		{
-			return 0;
-		}
-
-		buffer.Length--;
-		EmitLine(buffer, data, 0, 0, onLineReceived);
-		return data[0] == '\n' ? 1 : 0;
+		buffer.Text.Append(data, lineStart, data.Length - lineStart);
 	}
 
 	/// <summary>
@@ -205,4 +192,24 @@ public class LineOutputHandler : OutputHandler
 	/// <param name="c">The character to test.</param>
 	/// <returns><see langword="true"/> if <paramref name="c"/> is LF, NEL, LS, PS or FF; otherwise <see langword="false"/>.</returns>
 	private static bool IsLineBreak(char c) => c is '\n' or '\u0085' or '\u2028' or '\u2029' or '\f';
+
+	/// <summary>
+	/// The partial line one stream has delivered so far, and whether its last read ended on a CR.
+	/// </summary>
+	internal sealed class LineBuffer
+	{
+		/// <summary>
+		/// Gets the start of a line whose line break has not arrived yet.
+		/// </summary>
+		internal StringBuilder Text { get; } = new();
+
+		/// <summary>
+		/// Gets or sets a value indicating whether the last read ended on a CR, whose line has already
+		/// been delivered, so an LF at the start of the next read completes a CRLF and is skipped.
+		/// </summary>
+		internal bool SkipLeadingLineFeed { get; set; }
+
+		/// <inheritdoc/>
+		public override string ToString() => Text.ToString();
+	}
 }
