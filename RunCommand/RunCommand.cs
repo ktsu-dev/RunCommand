@@ -316,6 +316,33 @@ public static class RunCommand
 		return await RunAsync(startInfo, outputHandler, useElevation, cancellationToken).ConfigureAwait(false);
 	}
 
+	/// <summary>
+	/// Resolves a relative executable path that names a directory, such as <c>./build.sh</c> or
+	/// <c>tools/build.sh</c>, against the working directory the command runs in.
+	/// </summary>
+	/// <param name="fileName">The executable as the caller gave it.</param>
+	/// <param name="workingDirectory">The command's working directory, or <see langword="null"/> if none was set.</param>
+	/// <param name="isWindows">Whether a backslash also separates directories.</param>
+	/// <returns>The path to start.</returns>
+	/// <remarks>
+	/// Process.Start resolves a relative path against the calling process's current directory, not
+	/// against <see cref="ProcessStartInfo.WorkingDirectory"/>, so without this <c>./build.sh</c> ran
+	/// the caller's copy, or failed to start, whatever <see cref="CommandOptions.WorkingDirectory"/>
+	/// said. Resolving it here does what <c>cd dir &amp;&amp; ./build.sh</c> does in a shell. A bare name
+	/// such as <c>git</c> has no directory part and keeps the usual search, and an absolute path is
+	/// already unambiguous.
+	/// </remarks>
+	private static string ResolveFileName(string fileName, string? workingDirectory, bool isWindows)
+	{
+		if (workingDirectory is null || Path.IsPathRooted(fileName))
+		{
+			return fileName;
+		}
+
+		bool hasDirectoryPart = fileName.Contains('/') || (isWindows && fileName.Contains('\\'));
+		return hasDirectoryPart ? Path.GetFullPath(Path.Combine(workingDirectory, fileName)) : fileName;
+	}
+
 	private static ProcessStartInfo CreateStartInfo(string fileName, OutputHandler outputHandler, CommandOptions options, out bool useElevation)
 	{
 		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -345,7 +372,7 @@ public static class RunCommand
 
 		ProcessStartInfo startInfo = new()
 		{
-			FileName = fileName,
+			FileName = ResolveFileName(fileName, options.WorkingDirectory?.WeakString, isWindows),
 			CreateNoWindow = true,
 		};
 
