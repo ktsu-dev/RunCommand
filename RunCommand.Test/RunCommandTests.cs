@@ -741,6 +741,56 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	[DataRow("")]
+	[DataRow("sub")]
+	public async Task ExecuteAsyncShouldResolveARelativeExecutablePathAgainstTheWorkingDirectory(string subdirectory)
+	{
+		// A same-named script sits in the caller's current directory too, so running the wrong copy
+		// shows up in the output rather than as a start failure
+		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+		string scriptName = $"{nameof(RunCommandTests)}-{Guid.NewGuid():N}{(isWindows ? ".cmd" : ".sh")}";
+		string relativePath = string.IsNullOrEmpty(subdirectory) ? $".{Path.DirectorySeparatorChar}{scriptName}" : $"{subdirectory}/{scriptName}";
+
+		string workingDirectory = CreateDirectoryForTest(nameof(ExecuteAsyncShouldResolveARelativeExecutablePathAgainstTheWorkingDirectory) + subdirectory);
+		string intendedScript = Path.Join(workingDirectory, subdirectory, scriptName);
+		string callerScript = Path.Join(Environment.CurrentDirectory, subdirectory, scriptName);
+		_ = Directory.CreateDirectory(Path.GetDirectoryName(intendedScript)!);
+		_ = Directory.CreateDirectory(Path.GetDirectoryName(callerScript)!);
+		WriteScript(intendedScript, "working-directory");
+		WriteScript(callerScript, "caller");
+
+		try
+		{
+			List<string> output = [];
+			int exitCode = await RunCommand.ExecuteAsync(
+				relativePath,
+				[],
+				new LineOutputHandler(onStandardOutput: output.Add),
+				new CommandOptions { WorkingDirectory = AbsoluteDirectoryPath.Create(workingDirectory) }).ConfigureAwait(false);
+
+			Assert.AreEqual(0, exitCode, "Expected the script to run successfully.");
+			Assert.AreEqual("working-directory", string.Concat(output).Trim(), "Expected the script in the working directory to run, not the caller's copy.");
+		}
+		finally
+		{
+			File.Delete(callerScript);
+			File.Delete(intendedScript);
+		}
+	}
+
+	private static void WriteScript(string path, string message)
+	{
+		if (OperatingSystem.IsWindows())
+		{
+			File.WriteAllText(path, $"@echo {message}\r\n");
+			return;
+		}
+
+		File.WriteAllText(path, $"#!/bin/sh\necho {message}\n");
+		File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+	}
+
+	[TestMethod]
 	public async Task ExecuteAsyncShouldInheritTheCurrentDirectoryWhenNoWorkingDirectoryIsGiven()
 	{
 		(string fileName, string[] arguments) = GetPrintWorkingDirectoryCommand();
