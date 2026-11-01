@@ -1422,6 +1422,48 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public async Task LineOutputHandlerSharedByOverlappingRunsShouldKeepEachRunsLinesApart()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Needs sh to print part of a line, pause, then finish it. The per-run splitting this covers is platform independent, so the other legs cover it.");
+		}
+
+		// ktsu-dev/RunCommand#130: the second run's Reset threw away the first run's partial line, and
+		// both runs then appended to the same buffer, so their text came out joined into one line.
+		List<string> lines = [];
+		using SemaphoreSlim firstPartArrived = new(0);
+		LineOutputHandler handler = new(line =>
+		{
+			lock (lines)
+			{
+				lines.Add(line);
+			}
+		});
+
+		Task<int> first = RunCommand.ExecuteAsync(
+			"sh",
+			["-c", "printf AAAA; sleep 1; printf 'AAAA\\n'"],
+			new SignallingLineOutputHandler(handler, firstPartArrived));
+
+		Assert.IsTrue(await firstPartArrived.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false), "Expected the first run's partial line to arrive.");
+
+		Task<int> second = RunCommand.ExecuteAsync("sh", ["-c", "printf BBBB; sleep 0.2; printf 'BBBB\\n'"], handler);
+
+		int[] exitCodes = await Task.WhenAll(first, second).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCodes[0], "The first run should succeed.");
+		Assert.AreEqual(0, exitCodes[1], "The second run should succeed.");
+		List<string> sorted;
+		lock (lines)
+		{
+			sorted = [.. lines.Order(StringComparer.Ordinal)];
+		}
+
+		Assert.AreEqual("AAAAAAAA | BBBBBBBB", string.Join(" | ", sorted));
+	}
+
+	[TestMethod]
 	public async Task ReusedLineOutputHandlerShouldDropTheLineARunWhoseCallbackThrewLeftUnfinished()
 	{
 		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -1445,7 +1487,8 @@ public class RunCommandTests
 		await Assert.ThrowsAsync<InvalidOperationException>(
 			() => RunCommand.ExecuteAsync("sh", ["-c", "printf partial; sleep 0.5; echo boom >&2; sleep 30"], handler)).ConfigureAwait(false);
 
-		Assert.AreEqual("partial", handler.outputBuffer.ToString(), "The failed run should have left its partial line buffered.");
+		// The failed run's partial line stays in that run's own handler (#130), so nothing is left on this one.
+		Assert.AreEqual(string.Empty, handler.outputBuffer.ToString(), "A run should split lines in its own handler, not the shared one.");
 
 		throwOnError = false;
 		int exitCode = await RunCommand.ExecuteAsync("sh", ["-c", "echo hello"], handler).ConfigureAwait(false);

@@ -460,8 +460,10 @@ public static class RunCommand
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 
-		// A handler can be reused, and a run that was cancelled or failed never reached Complete, so
-		// whatever partial line it left behind would otherwise be glued onto this run's first line.
+		// A handler can be reused, including by runs that overlap, so each run feeds a handler of its
+		// own: a partial line one run leaves behind, whether it was cancelled, failed or is still going,
+		// is never glued onto another run's output. Reset covers a stateful handler that returns itself.
+		outputHandler = outputHandler.CreateRunHandler();
 		outputHandler.Reset();
 
 		using Process process = new() { StartInfo = startInfo };

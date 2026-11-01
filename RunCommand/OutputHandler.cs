@@ -12,6 +12,9 @@ using System.Text;
 /// The two streams are read concurrently, but the actions are never run at the same time: each one
 /// returns before the other is called, so both may share state, such as one list collecting all of a
 /// command's output, without locking. Each stream's chunks arrive in the order they were written.
+/// That guarantee covers one run. A handler passed to several runs at once, for example under
+/// <see cref="Task.WhenAll(Task[])"/>, may have its actions called by those runs at the same time,
+/// so state shared between them needs its own lock.
 /// </remarks>
 public class OutputHandler
 {
@@ -78,4 +81,12 @@ public class OutputHandler
 	/// and its leftover text is not a real line, so it is dropped rather than delivered.
 	/// </summary>
 	internal virtual void Reset() { }
+
+	/// <summary>
+	/// Returns the handler that one run feeds its output to. A handler that keeps per-run state, such as a
+	/// partial line, returns a fresh handler sharing its delegates and encoding, so runs that overlap on
+	/// this handler each keep their own state. A stateless handler returns itself.
+	/// </summary>
+	/// <returns>The handler for a single run.</returns>
+	internal virtual OutputHandler CreateRunHandler() => this;
 }
