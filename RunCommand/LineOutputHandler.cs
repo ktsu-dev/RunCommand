@@ -200,9 +200,11 @@ public class LineOutputHandler : OutputHandler
 	}
 
 	/// <summary>
-	/// Determines whether a character other than CR ends a line, matching the set <c>string.ReplaceLineEndings</c> recognises.
+	/// Determines whether a character other than CR ends a line. Only LF does, matching
+	/// <c>Process.OutputDataReceived</c> and <c>StreamReader.ReadLine</c>: NEL, LS, PS and FF are ordinary characters,
+	/// since tools emit them raw inside JSON strings and a line-delimited record must arrive whole.
 	/// </summary>
 	/// <param name="c">The character to test.</param>
-	/// <returns><see langword="true"/> if <paramref name="c"/> is LF, NEL, LS, PS or FF; otherwise <see langword="false"/>.</returns>
-	private static bool IsLineBreak(char c) => c is '\n' or '\u0085' or '\u2028' or '\u2029' or '\f';
+	/// <returns><see langword="true"/> if <paramref name="c"/> is LF; otherwise <see langword="false"/>.</returns>
+	private static bool IsLineBreak(char c) => c == '\n';
 }

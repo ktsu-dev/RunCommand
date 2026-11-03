@@ -394,7 +394,7 @@ Processes output in raw, undelimited chunks as they arrive from the process.
 
 ### `LineOutputHandler`
 
-Inherits from `OutputHandler` and buffers incoming chunks, invoking the delegates once per complete line. Incomplete trailing data is held until the rest of the line arrives.
+Inherits from `OutputHandler` and buffers incoming chunks, invoking the delegates once per complete line. Incomplete trailing data is held until the rest of the line arrives. Lines end at LF, CR or CRLF, the same as `Process.OutputDataReceived` and `StreamReader.ReadLine`; NEL (U+0085), LS (U+2028), PS (U+2029) and form feed stay inside the line, so line-delimited JSON that carries them raw arrives one record per call.
 
 #### Constructor
 
