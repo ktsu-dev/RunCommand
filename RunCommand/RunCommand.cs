@@ -409,7 +409,7 @@ public static class RunCommand
 	/// A removed <c>PATH</c> gives no directories to search, so the executable is found the way it is without an
 	/// overlay.
 	/// </returns>
-	private static string? FindOverlayPath(IReadOnlyDictionary<string, string?> environmentVariables, bool isWindows)
+	internal static string? FindOverlayPath(IReadOnlyDictionary<string, string?> environmentVariables, bool isWindows)
 	{
 		StringComparison comparison = isWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 		string? path = null;
@@ -439,7 +439,7 @@ public static class RunCommand
 	/// the caller's <c>PATH</c>. A name with a directory part is a path rather than a name to search for, so it is
 	/// left alone, and so are relative <c>PATH</c> entries, which would otherwise depend on the caller's directory.
 	/// </remarks>
-	private static string? ResolveOnSearchPath(string fileName, string searchPath, IDictionary<string, string?> environment, bool isWindows)
+	internal static string? ResolveOnSearchPath(string fileName, string searchPath, IDictionary<string, string?> environment, bool isWindows)
 	{
 		bool hasDirectoryPart = fileName.Contains('/') || (isWindows && (fileName.Contains('\\') || fileName.Contains(':')));
 		if (fileName.Length == 0 || hasDirectoryPart)

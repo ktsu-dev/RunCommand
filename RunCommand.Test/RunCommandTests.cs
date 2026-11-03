@@ -15,6 +15,7 @@ public class RunCommandTests
 	private static readonly string[] ExpectedALastNext = ["a", "last", "next"];
 	private static readonly string[] ExpectedDone = ["done"];
 	private static readonly string[] ExpectedOverlayCopy = ["ran overlay copy"];
+	private static readonly string[] ExpectedStarted = ["started"];
 
 	private static string GetCopyCommand(string source, string destination) =>
 		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
@@ -881,6 +882,67 @@ public class RunCommandTests
 		List<string> output = await RunOnOverlayPathAsync(name, $"{notExecutable}{Path.PathSeparator}{executable}").ConfigureAwait(false);
 
 		Assert.AreSequenceEqual(ExpectedOverlayCopy, output, "Expected the search to pass over a file without an execute bit, as a shell does.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldFindTheToolOnTheCallersPathWhenTheOverlayRemovesPath()
+	{
+		SkipOnWindows();
+		List<string> output = [];
+
+		int exitCode = await RunCommand.ExecuteAsync(
+			"sh",
+			["-c", "echo started"],
+			new LineOutputHandler(onStandardOutput: output.Add),
+			new CommandOptions { EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = null } }).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode);
+		Assert.AreSequenceEqual(ExpectedStarted, output, "Expected a removed PATH to leave the usual lookup in place.");
+	}
+
+	[TestMethod]
+	public void FindOverlayPathShouldMatchTheKeyIgnoringCaseOnlyOnWindows()
+	{
+		Dictionary<string, string?> overlay = new(StringComparer.Ordinal) { ["Path"] = "/pinned" };
+
+		Assert.AreEqual("/pinned", RunCommand.FindOverlayPath(overlay, isWindows: true));
+		Assert.IsNull(RunCommand.FindOverlayPath(overlay, isWindows: false));
+	}
+
+	[TestMethod]
+	public void ResolveOnSearchPathShouldApplyPathExtOnWindows()
+	{
+		string directory = CreateDirectoryForTest();
+		string name = $"tool-{nameof(ResolveOnSearchPathShouldApplyPathExtOnWindows)}";
+		WriteScript(directory, $"{name}.CMD", "exit 0", executable: true);
+		Dictionary<string, string?> environment = new() { ["PATHEXT"] = ".EXE;.CMD" };
+
+		string? resolved = RunCommand.ResolveOnSearchPath(name, directory, environment, isWindows: true);
+
+		Assert.AreEqual(Path.Join(directory, $"{name}.CMD"), resolved);
+	}
+
+	[TestMethod]
+	public void ResolveOnSearchPathShouldLeaveANameWithADirectoryPartAlone()
+	{
+		string directory = CreateDirectoryForTest();
+		WriteScript(directory, "tool", "exit 0", executable: true);
+
+		Assert.IsNull(RunCommand.ResolveOnSearchPath("./tool", directory, new Dictionary<string, string?>(), isWindows: false));
+		Assert.IsNull(RunCommand.ResolveOnSearchPath(@"bin\tool", directory, new Dictionary<string, string?>(), isWindows: true));
+		Assert.IsNull(RunCommand.ResolveOnSearchPath("C:tool", directory, new Dictionary<string, string?>(), isWindows: true));
+	}
+
+	[TestMethod]
+	public void ResolveOnSearchPathShouldSkipRelativeAndMissingEntries()
+	{
+		string directory = CreateDirectoryForTest();
+		string name = $"tool-{nameof(ResolveOnSearchPathShouldSkipRelativeAndMissingEntries)}";
+		WriteScript(directory, name, "exit 0", executable: true);
+		string searchPath = string.Join(Path.PathSeparator, "relative", Path.Join(directory, "missing"), "", directory);
+
+		Assert.AreEqual(Path.Join(directory, name), RunCommand.ResolveOnSearchPath(name, searchPath, new Dictionary<string, string?>(), isWindows: false));
+		Assert.IsNull(RunCommand.ResolveOnSearchPath(name, "relative", new Dictionary<string, string?>(), isWindows: false));
 	}
 
 	private static void SkipOnWindows()
