@@ -5,6 +5,7 @@ namespace ktsu.RunCommand;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 #if NETSTANDARD2_0
@@ -316,6 +317,119 @@ public static class RunCommand
 		return await RunAsync(startInfo, outputHandler, useElevation, cancellationToken).ConfigureAwait(false);
 	}
 
+	/// <summary>
+	/// Returns the <c>PATH</c> value an environment overlay sets, if it sets one.
+	/// </summary>
+	/// <param name="environmentVariables">The overlay the caller passed.</param>
+	/// <param name="isWindows">Whether variable names compare case-insensitively.</param>
+	/// <returns>
+	/// The overlay's <c>PATH</c>, or <see langword="null"/> when the overlay leaves <c>PATH</c> alone or removes it.
+	/// A removed <c>PATH</c> gives no directories to search, so the executable is found the way it is without an
+	/// overlay.
+	/// </returns>
+	private static string? FindOverlayPath(IReadOnlyDictionary<string, string?> environmentVariables, bool isWindows)
+	{
+		StringComparison comparison = isWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+		string? path = null;
+		foreach (KeyValuePair<string, string?> variable in environmentVariables)
+		{
+			if (string.Equals(variable.Key, "PATH", comparison))
+			{
+				path = variable.Value;
+			}
+		}
+
+		return path;
+	}
+
+	/// <summary>
+	/// Looks a bare executable name up on the <c>PATH</c> an environment overlay gives the command.
+	/// </summary>
+	/// <param name="fileName">The executable as the caller gave it.</param>
+	/// <param name="searchPath">The overlay's <c>PATH</c>.</param>
+	/// <param name="environment">The command's environment, which supplies <c>PATHEXT</c> on Windows.</param>
+	/// <param name="isWindows">Whether to try the <c>PATHEXT</c> extensions and accept a backslash as a separator.</param>
+	/// <returns>The full path of the first match, or <see langword="null"/> to keep the usual lookup.</returns>
+	/// <remarks>
+	/// With <see cref="ProcessStartInfo.UseShellExecute"/> off, <c>Process.Start</c> searches the calling process's
+	/// <c>PATH</c>, not the one in <see cref="ProcessStartInfo.Environment"/>. Without this, an overlay that points
+	/// <c>PATH</c> at a pinned toolchain either failed to start a tool only it holds or started a same-named tool from
+	/// the caller's <c>PATH</c>. A name with a directory part is a path rather than a name to search for, so it is
+	/// left alone, and so are relative <c>PATH</c> entries, which would otherwise depend on the caller's directory.
+	/// </remarks>
+	private static string? ResolveOnSearchPath(string fileName, string searchPath, IDictionary<string, string?> environment, bool isWindows)
+	{
+		bool hasDirectoryPart = fileName.Contains('/') || (isWindows && (fileName.Contains('\\') || fileName.Contains(':')));
+		if (fileName.Length == 0 || hasDirectoryPart)
+		{
+			return null;
+		}
+
+		string[] candidates = [fileName];
+		if (isWindows && !Path.HasExtension(fileName))
+		{
+			_ = environment.TryGetValue("PATHEXT", out string? pathExt);
+			string[] extensions = (pathExt ?? ".COM;.EXE;.BAT;.CMD").Split([';'], StringSplitOptions.RemoveEmptyEntries);
+			candidates = Array.ConvertAll(extensions, extension => fileName + extension.Trim());
+		}
+
+		foreach (string directory in searchPath.Split([Path.PathSeparator], StringSplitOptions.RemoveEmptyEntries))
+		{
+			foreach (string candidate in candidates)
+			{
+				string? match = TryExecutable(directory.Trim().Trim('"'), candidate);
+				if (match is not null)
+				{
+					return match;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/// <summary>
+	/// Returns the full path of <paramref name="fileName"/> in <paramref name="directory"/> if it is a file the
+	/// command could start.
+	/// </summary>
+	/// <param name="directory">A directory from the search path.</param>
+	/// <param name="fileName">The file name to look for.</param>
+	/// <returns>
+	/// The full path, or <see langword="null"/> if there is no such file. Outside Windows the file also needs an
+	/// execute permission bit, where the platform exposes one.
+	/// </returns>
+	private static string? TryExecutable(string directory, string fileName)
+	{
+		try
+		{
+			if (!Path.IsPathRooted(directory))
+			{
+				return null;
+			}
+
+			string candidate = Path.Combine(directory, fileName);
+			if (!File.Exists(candidate))
+			{
+				return null;
+			}
+
+#if NET7_0_OR_GREATER
+			const UnixFileMode anyExecute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+			if (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(candidate) & anyExecute) == 0)
+			{
+				return null;
+			}
+#endif
+
+			return candidate;
+		}
+		catch (Exception exception) when (exception is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+		{
+			// An entry that is not a usable path is skipped, the way a shell skips it.
+			return null;
+		}
+	}
+
 	private static ProcessStartInfo CreateStartInfo(string fileName, OutputHandler outputHandler, CommandOptions options, out bool useElevation)
 	{
 		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -380,6 +494,12 @@ public static class RunCommand
 					{
 						startInfo.Environment[variable.Key] = variable.Value;
 					}
+				}
+
+				string? overlayPath = FindOverlayPath(options.EnvironmentVariables, isWindows);
+				if (overlayPath is not null)
+				{
+					startInfo.FileName = ResolveOnSearchPath(startInfo.FileName, overlayPath, startInfo.Environment, isWindows) ?? startInfo.FileName;
 				}
 			}
 

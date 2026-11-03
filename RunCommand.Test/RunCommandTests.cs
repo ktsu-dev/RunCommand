@@ -14,6 +14,7 @@ public class RunCommandTests
 	private static readonly string[] ExpectedALast = ["a", "last"];
 	private static readonly string[] ExpectedALastNext = ["a", "last", "next"];
 	private static readonly string[] ExpectedDone = ["done"];
+	private static readonly string[] ExpectedOverlayCopy = ["ran overlay copy"];
 
 	private static string GetCopyCommand(string source, string destination) =>
 		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
@@ -837,6 +838,80 @@ public class RunCommandTests
 		{
 			Environment.SetEnvironmentVariable(name, null);
 		}
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldStartAToolThatOnlyTheOverlayPathHolds()
+	{
+		SkipOnWindows();
+		string directory = CreateDirectoryForTest();
+		string name = $"runcommand-{nameof(ExecuteAsyncShouldStartAToolThatOnlyTheOverlayPathHolds)}";
+		WriteScript(directory, name, "echo ran overlay copy", executable: true);
+
+		List<string> output = await RunOnOverlayPathAsync(name, directory).ConfigureAwait(false);
+
+		Assert.AreSequenceEqual(ExpectedOverlayCopy, output, "Expected the tool on the overlay PATH to start.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldPreferTheOverlayPathOverTheCallersPath()
+	{
+		SkipOnWindows();
+
+		// echo is on the caller's PATH too, so the old lookup would have started that one and printed the argument.
+		string directory = CreateDirectoryForTest();
+		WriteScript(directory, "echo", "printf 'ran overlay copy\\n'", executable: true);
+
+		List<string> output = await RunOnOverlayPathAsync("echo", directory, "ran caller copy").ConfigureAwait(false);
+
+		Assert.AreSequenceEqual(ExpectedOverlayCopy, output, "Expected the overlay PATH to choose which echo runs.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldSkipANonExecutableFileOnTheOverlayPath()
+	{
+		SkipOnWindows();
+		string root = CreateDirectoryForTest();
+		string notExecutable = Directory.CreateDirectory(Path.Join(root, "a")).FullName;
+		string executable = Directory.CreateDirectory(Path.Join(root, "b")).FullName;
+		string name = $"runcommand-{nameof(ExecuteAsyncShouldSkipANonExecutableFileOnTheOverlayPath)}";
+		WriteScript(notExecutable, name, "echo ran the file that cannot run", executable: false);
+		WriteScript(executable, name, "echo ran overlay copy", executable: true);
+
+		List<string> output = await RunOnOverlayPathAsync(name, $"{notExecutable}{Path.PathSeparator}{executable}").ConfigureAwait(false);
+
+		Assert.AreSequenceEqual(ExpectedOverlayCopy, output, "Expected the search to pass over a file without an execute bit, as a shell does.");
+	}
+
+	private static void SkipOnWindows()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Uses shell scripts and execute permission bits. The lookup this covers is shared, and the Unix legs cover it.");
+		}
+	}
+
+	private static void WriteScript(string directory, string name, string body, bool executable)
+	{
+		string path = Path.Join(directory, name);
+		File.WriteAllText(path, $"#!/bin/sh\n{body}\n");
+		if (!OperatingSystem.IsWindows())
+		{
+			UnixFileMode mode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+			File.SetUnixFileMode(path, executable ? mode | UnixFileMode.UserExecute : mode);
+		}
+	}
+
+	private static async Task<List<string>> RunOnOverlayPathAsync(string fileName, string overlayDirectories, params string[] arguments)
+	{
+		List<string> output = [];
+		int exitCode = await RunCommand.ExecuteAsync(
+			fileName,
+			arguments,
+			new LineOutputHandler(onStandardOutput: output.Add),
+			new CommandOptions { EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = $"{overlayDirectories}{Path.PathSeparator}/usr/bin{Path.PathSeparator}/bin" } }).ConfigureAwait(false);
+		Assert.AreEqual(0, exitCode);
+		return output;
 	}
 
 	[TestMethod]
