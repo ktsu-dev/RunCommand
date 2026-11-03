@@ -317,6 +317,88 @@ public static class RunCommand
 		return await RunAsync(startInfo, outputHandler, useElevation, cancellationToken).ConfigureAwait(false);
 	}
 
+	private static ProcessStartInfo CreateStartInfo(string fileName, OutputHandler outputHandler, CommandOptions options, out bool useElevation)
+	{
+		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+		useElevation = options.Elevation == Elevation.Elevated && isWindows;
+
+		if (useElevation && options.StandardInput == StandardInputMode.Closed)
+		{
+			// Same reason as the environment check below: UseShellExecute offers no stream to
+			// redirect, so the request cannot be honoured. Saying so beats starting a command whose
+			// standard input is still the caller's, which is the hang StandardInputMode.Closed exists
+			// to prevent.
+			throw new ArgumentException(
+				"Standard input cannot be closed for an elevated command, because elevation requires UseShellExecute.",
+				nameof(options));
+		}
+
+		if (useElevation && options.EnvironmentVariables is not null)
+		{
+			// Elevation needs UseShellExecute, which starts the process through the shell and offers
+			// nowhere to put an environment. Saying so here beats letting Process.Start fail with a
+			// message that does not mention either setting, and beats silently dropping variables a
+			// caller may be relying on for credentials or machine-parseable output.
+			throw new ArgumentException(
+				"Environment variables cannot be set for an elevated command, because elevation requires UseShellExecute.",
+				nameof(options));
+		}
+
+		ProcessStartInfo startInfo = new()
+		{
+			FileName = fileName,
+			CreateNoWindow = true,
+		};
+
+		if (options.WorkingDirectory is not null)
+		{
+			startInfo.WorkingDirectory = options.WorkingDirectory.WeakString;
+		}
+
+		if (useElevation)
+		{
+			startInfo.UseShellExecute = true;
+			startInfo.Verb = "runas";
+		}
+		else
+		{
+			startInfo.RedirectStandardOutput = true;
+			startInfo.RedirectStandardError = true;
+			startInfo.StandardOutputEncoding = outputHandler.Encoding;
+			startInfo.StandardErrorEncoding = outputHandler.Encoding;
+			startInfo.RedirectStandardInput = options.StandardInput == StandardInputMode.Closed;
+			startInfo.UseShellExecute = false;
+
+			if (options.EnvironmentVariables is not null)
+			{
+				foreach (KeyValuePair<string, string?> variable in options.EnvironmentVariables)
+				{
+					if (variable.Value is null)
+					{
+						_ = startInfo.Environment.Remove(variable.Key);
+					}
+					else
+					{
+						startInfo.Environment[variable.Key] = variable.Value;
+					}
+				}
+
+				string? overlayPath = FindOverlayPath(options.EnvironmentVariables, isWindows);
+				if (overlayPath is not null)
+				{
+					startInfo.FileName = ResolveOnSearchPath(startInfo.FileName, overlayPath, startInfo.Environment, isWindows) ?? startInfo.FileName;
+				}
+			}
+
+			if (isWindows)
+			{
+				startInfo.LoadUserProfile = true;
+			}
+		}
+
+		return startInfo;
+	}
+
 	/// <summary>
 	/// Returns the <c>PATH</c> value an environment overlay sets, if it sets one.
 	/// </summary>
@@ -428,88 +510,6 @@ public static class RunCommand
 			// An entry that is not a usable path is skipped, the way a shell skips it.
 			return null;
 		}
-	}
-
-	private static ProcessStartInfo CreateStartInfo(string fileName, OutputHandler outputHandler, CommandOptions options, out bool useElevation)
-	{
-		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-		useElevation = options.Elevation == Elevation.Elevated && isWindows;
-
-		if (useElevation && options.StandardInput == StandardInputMode.Closed)
-		{
-			// Same reason as the environment check below: UseShellExecute offers no stream to
-			// redirect, so the request cannot be honoured. Saying so beats starting a command whose
-			// standard input is still the caller's, which is the hang StandardInputMode.Closed exists
-			// to prevent.
-			throw new ArgumentException(
-				"Standard input cannot be closed for an elevated command, because elevation requires UseShellExecute.",
-				nameof(options));
-		}
-
-		if (useElevation && options.EnvironmentVariables is not null)
-		{
-			// Elevation needs UseShellExecute, which starts the process through the shell and offers
-			// nowhere to put an environment. Saying so here beats letting Process.Start fail with a
-			// message that does not mention either setting, and beats silently dropping variables a
-			// caller may be relying on for credentials or machine-parseable output.
-			throw new ArgumentException(
-				"Environment variables cannot be set for an elevated command, because elevation requires UseShellExecute.",
-				nameof(options));
-		}
-
-		ProcessStartInfo startInfo = new()
-		{
-			FileName = fileName,
-			CreateNoWindow = true,
-		};
-
-		if (options.WorkingDirectory is not null)
-		{
-			startInfo.WorkingDirectory = options.WorkingDirectory.WeakString;
-		}
-
-		if (useElevation)
-		{
-			startInfo.UseShellExecute = true;
-			startInfo.Verb = "runas";
-		}
-		else
-		{
-			startInfo.RedirectStandardOutput = true;
-			startInfo.RedirectStandardError = true;
-			startInfo.StandardOutputEncoding = outputHandler.Encoding;
-			startInfo.StandardErrorEncoding = outputHandler.Encoding;
-			startInfo.RedirectStandardInput = options.StandardInput == StandardInputMode.Closed;
-			startInfo.UseShellExecute = false;
-
-			if (options.EnvironmentVariables is not null)
-			{
-				foreach (KeyValuePair<string, string?> variable in options.EnvironmentVariables)
-				{
-					if (variable.Value is null)
-					{
-						_ = startInfo.Environment.Remove(variable.Key);
-					}
-					else
-					{
-						startInfo.Environment[variable.Key] = variable.Value;
-					}
-				}
-
-				string? overlayPath = FindOverlayPath(options.EnvironmentVariables, isWindows);
-				if (overlayPath is not null)
-				{
-					startInfo.FileName = ResolveOnSearchPath(startInfo.FileName, overlayPath, startInfo.Environment, isWindows) ?? startInfo.FileName;
-				}
-			}
-
-			if (isWindows)
-			{
-				startInfo.LoadUserProfile = true;
-			}
-		}
-
-		return startInfo;
 	}
 
 #if NETSTANDARD2_0
