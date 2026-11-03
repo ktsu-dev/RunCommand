@@ -484,7 +484,9 @@ public static class RunCommand
 	{
 		try
 		{
-			if (!Path.IsPathRooted(directory))
+			// A rooted name would make Path.Combine drop the directory. The caller only passes bare names, so this
+			// is a guard rather than a case that arises.
+			if (!Path.IsPathRooted(directory) || Path.IsPathRooted(fileName))
 			{
 				return null;
 			}
