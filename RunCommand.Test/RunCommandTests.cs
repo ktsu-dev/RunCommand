@@ -960,16 +960,30 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
-	public void ResolveOnSearchPathShouldApplyPathExtOnWindows()
+	public void ResolveOnSearchPathShouldAddExeToANameWithNoExtensionOnWindows()
 	{
 		string directory = CreateDirectoryForTest();
-		string name = $"tool-{nameof(ResolveOnSearchPathShouldApplyPathExtOnWindows)}";
-		WriteScript(directory, $"{name}.CMD", "exit 0", executable: true);
-		Dictionary<string, string?> environment = new() { ["PATHEXT"] = ".EXE;.CMD" };
+		string name = $"tool-{nameof(ResolveOnSearchPathShouldAddExeToANameWithNoExtensionOnWindows)}";
+		WriteScript(directory, $"{name}.exe", "exit 0", executable: true);
 
-		string? resolved = RunCommand.ResolveOnSearchPath(name, directory, environment, isWindows: true);
+		string? resolved = RunCommand.ResolveOnSearchPath(name, directory, isWindows: true);
 
-		Assert.AreEqual(Path.Join(directory, $"{name}.CMD"), resolved);
+		Assert.AreEqual(Path.Join(directory, $"{name}.exe"), resolved);
+	}
+
+	[TestMethod]
+	public void ResolveOnSearchPathShouldNeverResolveABareNameToABatchFileOnWindows()
+	{
+		// cmd.exe re-parses a batch file's command line, so a bare name that reached tool.cmd would let & or | in an
+		// argument run a second command (ktsu-dev/RunCommand#138). CreateProcess only ever adds .exe to such a name.
+		string directory = CreateDirectoryForTest();
+		string name = $"tool-{nameof(ResolveOnSearchPathShouldNeverResolveABareNameToABatchFileOnWindows)}";
+		WriteScript(directory, $"{name}.cmd", "exit 0", executable: true);
+		WriteScript(directory, $"{name}.bat", "exit 0", executable: true);
+		WriteScript(directory, $"{name}.com", "exit 0", executable: true);
+
+		Assert.IsNull(RunCommand.ResolveOnSearchPath(name, directory, isWindows: true));
+		Assert.AreEqual(Path.Join(directory, $"{name}.cmd"), RunCommand.ResolveOnSearchPath($"{name}.cmd", directory, isWindows: true), "A batch file named with its extension is the caller's explicit choice.");
 	}
 
 	[TestMethod]
@@ -978,9 +992,9 @@ public class RunCommandTests
 		string directory = CreateDirectoryForTest();
 		WriteScript(directory, "tool", "exit 0", executable: true);
 
-		Assert.IsNull(RunCommand.ResolveOnSearchPath("./tool", directory, new Dictionary<string, string?>(), isWindows: false));
-		Assert.IsNull(RunCommand.ResolveOnSearchPath(@"bin\tool", directory, new Dictionary<string, string?>(), isWindows: true));
-		Assert.IsNull(RunCommand.ResolveOnSearchPath("C:tool", directory, new Dictionary<string, string?>(), isWindows: true));
+		Assert.IsNull(RunCommand.ResolveOnSearchPath("./tool", directory, isWindows: false));
+		Assert.IsNull(RunCommand.ResolveOnSearchPath(@"bin\tool", directory, isWindows: true));
+		Assert.IsNull(RunCommand.ResolveOnSearchPath("C:tool", directory, isWindows: true));
 	}
 
 	[TestMethod]
@@ -991,8 +1005,8 @@ public class RunCommandTests
 		WriteScript(directory, name, "exit 0", executable: true);
 		string searchPath = string.Join(Path.PathSeparator, "relative", Path.Join(directory, "missing"), "", directory);
 
-		Assert.AreEqual(Path.Join(directory, name), RunCommand.ResolveOnSearchPath(name, searchPath, new Dictionary<string, string?>(), isWindows: false));
-		Assert.IsNull(RunCommand.ResolveOnSearchPath(name, "relative", new Dictionary<string, string?>(), isWindows: false));
+		Assert.AreEqual(Path.Join(directory, name), RunCommand.ResolveOnSearchPath(name, searchPath, isWindows: false));
+		Assert.IsNull(RunCommand.ResolveOnSearchPath(name, "relative", isWindows: false));
 	}
 
 	private static void SkipOnWindows()
