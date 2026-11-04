@@ -6,6 +6,8 @@ namespace ktsu.RunCommand.Test;
 public class LineOutputHandlerTests
 {
 	private static readonly string[] ExpectedXY = ["x", "y"];
+	private static readonly string[] ExpectedX = ["x"];
+	private static readonly string[] ExpectedXEmptyY = ["x", "", "y"];
 	private static readonly string[] ExpectedEveryLineEndingKind = ["a", "b", "c", "d", ""];
 	private static readonly string[] ExpectedALast = ["a", "last"];
 	private static readonly string[] ExpectedALastNext = ["a", "last", "next"];
@@ -135,7 +137,7 @@ public class LineOutputHandlerTests
 	}
 
 	[TestMethod]
-	public void HandleStandardOutputDataShouldHoldBackTrailingCarriageReturn()
+	public void HandleStandardOutputDataShouldDeliverALineEndingInATrailingCarriageReturnAtOnce()
 	{
 		// Arrange
 		List<string> lines = [];
@@ -144,9 +146,55 @@ public class LineOutputHandlerTests
 		// Act
 		handler.HandleStandardOutputData("x\r");
 
+		// Assert: delivered before any further read and before Complete()
+		Assert.AreSequenceEqual(ExpectedX, lines);
+		Assert.AreEqual(string.Empty, handler.outputBuffer.ToString());
+	}
+
+	[TestMethod]
+	public void HandleStandardErrorDataShouldDeliverALineEndingInATrailingCarriageReturnAtOnce()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardError: lines.Add);
+
+		// Act
+		handler.HandleStandardErrorData("x\r");
+
 		// Assert
-		Assert.IsEmpty(lines);
-		Assert.AreEqual("x\r", handler.outputBuffer.ToString());
+		Assert.AreSequenceEqual(ExpectedX, lines);
+		Assert.AreEqual(string.Empty, handler.errorBuffer.ToString());
+	}
+
+	[TestMethod]
+	public void CompleteShouldNotDeliverALineAlreadyEndedByATrailingCarriageReturn()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+		handler.HandleStandardOutputData("x\r");
+
+		// Act
+		handler.Complete();
+
+		// Assert
+		Assert.AreSequenceEqual(ExpectedX, lines);
+	}
+
+	[TestMethod]
+	public void ResetShouldForgetAnLfStillDueToBeSkipped()
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+		handler.HandleStandardOutputData("x\r");
+
+		// Act
+		handler.Reset();
+		handler.HandleStandardOutputData("\ny\n");
+
+		// Assert: the next run's leading LF ends an empty line of its own
+		Assert.AreSequenceEqual(ExpectedXEmptyY, lines);
 	}
 
 	[TestMethod]
