@@ -179,7 +179,7 @@ class Program
 
 A cancelled call always throws `OperationCanceledException` — it never returns the killed process's exit code — so cancellation cannot be mistaken for a genuine failure of the command.
 
-On .NET Core 3.0 and later the entire process tree is terminated. On .NET Standard 2.0 and 2.1 only the process itself can be terminated, so any grandchildren it spawned are left running.
+On .NET Core 3.0 and later, including apps on .NET Core 3.x and .NET 5–7 that load the .NET Standard build, the entire process tree is terminated. On .NET Framework and Mono only the process itself can be terminated, so any grandchildren it spawned are left running.
 
 ## Process Options
 

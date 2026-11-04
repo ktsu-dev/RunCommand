@@ -46,7 +46,7 @@ output through delegates. The solution uses:
 
 - **ktsu.Sdk** - Custom SDK providing shared build configuration
 - **MSTest.Sdk** - Test project SDK with Microsoft Testing Platform
-- Multi-targeting: `net10.0`, `net9.0`, `net8.0`, `net7.0`, `net6.0`, `net5.0`, `netstandard2.0`, `netstandard2.1`
+- Multi-targeting: `net10.0`, `net9.0`, `net8.0`, `netstandard2.0`, `netstandard2.1` (set by ktsu.Sdk). Apps on .NET Core 3.x and .NET 5–7 load the `netstandard2.1` build
 
 The test project targets `net10.0` only.
 
@@ -109,8 +109,11 @@ before returning. **Do not remove this** — without it a cancelled command is i
 a genuine failure of the underlying tool. The regression test repeats a 1 ms cancellation 50 times,
 because a single attempt still throws most of the time even when the bug is present.
 
-Process-tree termination requires .NET Core 3.0 or later; the `netstandard2.0`/`netstandard2.1`
-builds can only kill the process itself.
+Process-tree termination requires .NET Core 3.0 or later. The `netstandard2.0`/`netstandard2.1` builds
+find `Process.Kill(bool)` by reflection in `KillEntireTreeWhereSupported`, because those builds are
+what .NET Core 3.x and .NET 5–7 apps load, and fall back to killing the process alone on .NET
+Framework and Mono. The reflection call unwraps `TargetInvocationException` so `TryKill` still sees
+the overload's own exceptions.
 
 ### Elevation constraints
 

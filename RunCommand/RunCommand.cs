@@ -6,6 +6,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 #if NETSTANDARD2_0
@@ -727,10 +729,55 @@ public static class RunCommand
 	}
 
 #if NETSTANDARD2_0 || NETSTANDARD2_1
-	// Process.Kill(bool) requires .NET Core 3.0 or later, so the older targets can only terminate
-	// the process itself and not any grandchildren it spawned.
-	private static void Kill(Process process) => process.Kill();
+	private static void Kill(Process process) => KillEntireTreeWhereSupported(process);
 #else
 	private static void Kill(Process process) => process.Kill(entireProcessTree: true);
 #endif
+
+	/// <summary>
+	/// <see cref="Process.Kill()"/>'s <c>entireProcessTree</c> overload, looked up at run time.
+	/// </summary>
+	private static readonly MethodInfo? KillEntireProcessTree = typeof(Process).GetMethod(nameof(Process.Kill), [typeof(bool)]);
+
+	/// <summary>
+	/// Kills <paramref name="process"/> and its descendants when the runtime can, and the process alone when it can't.
+	/// </summary>
+	/// <param name="process">The process to kill.</param>
+	/// <remarks>
+	/// The netstandard2.0/2.1 builds are what .NET Core 3.x and .NET 5–7 apps load, because no build targets those
+	/// runtimes. <c>Process.Kill(bool)</c> exists on all of them, but the netstandard reference surface does not
+	/// declare it, so it is found by reflection: without it a cancelled command's grandchildren kept running there
+	/// (ktsu-dev/RunCommand#134). .NET Framework and Mono have no such overload and kill the process alone.
+	/// The overload's own exceptions are rethrown unwrapped, so <see cref="TryKill(Process, Action{Process})"/>
+	/// still treats them as best effort. Compiled on every target so the tests can reach it.
+	/// </remarks>
+	internal static void KillEntireTreeWhereSupported(Process process) =>
+		KillEntireTreeWhereSupported(process, KillEntireProcessTree);
+
+	/// <summary>
+	/// Kills <paramref name="process"/> through <paramref name="killEntireProcessTree"/>, or alone when it is
+	/// <see langword="null"/>.
+	/// </summary>
+	/// <param name="process">The process to kill.</param>
+	/// <param name="killEntireProcessTree">
+	/// <c>Process.Kill(bool)</c>, or <see langword="null"/> where the runtime lacks it. A parameter so tests can
+	/// stand in for .NET Framework and Mono.
+	/// </param>
+	internal static void KillEntireTreeWhereSupported(Process process, MethodInfo? killEntireProcessTree)
+	{
+		if (killEntireProcessTree is null)
+		{
+			process.Kill();
+			return;
+		}
+
+		try
+		{
+			_ = killEntireProcessTree.Invoke(process, [true]);
+		}
+		catch (TargetInvocationException exception) when (exception.InnerException is not null)
+		{
+			ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
+		}
+	}
 }
