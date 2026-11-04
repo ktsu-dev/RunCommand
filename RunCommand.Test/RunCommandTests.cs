@@ -935,6 +935,48 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public async Task ExecuteAsyncShouldSkipAFileOnTheOverlayPathThatOnlyOthersMayExecute()
+	{
+		SkipOnWindows();
+		if (Environment.UserName == "root")
+		{
+			Assert.Inconclusive("root may execute any file that has an execute bit, so the owner's missing bit is not visible.");
+		}
+
+		// Group and others may execute this file but its owner, the caller, may not, so a shell passes over it.
+		// Testing for any execute bit accepted it and the start failed with "Permission denied" (#139).
+		string root = CreateDirectoryForTest();
+		string othersOnly = Directory.CreateDirectory(Path.Join(root, "a")).FullName;
+		string executable = Directory.CreateDirectory(Path.Join(root, "b")).FullName;
+		string name = $"runcommand-{nameof(ExecuteAsyncShouldSkipAFileOnTheOverlayPathThatOnlyOthersMayExecute)}";
+		WriteScript(othersOnly, name, "echo ran the file the caller cannot run", executable: false);
+		if (!OperatingSystem.IsWindows())
+		{
+			File.SetUnixFileMode(
+				Path.Join(othersOnly, name),
+				UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+		}
+
+		WriteScript(executable, name, "echo ran overlay copy", executable: true);
+
+		List<string> output = await RunOnOverlayPathAsync(name, $"{othersOnly}{Path.PathSeparator}{executable}").ConfigureAwait(false);
+
+		Assert.AreSequenceEqual(ExpectedOverlayCopy, output, "Expected the search to ask whether the caller may execute the file, as a shell does.");
+	}
+
+	[TestMethod]
+	public void CanExecuteShouldReportWhetherTheCallerMayExecuteTheFile()
+	{
+		SkipOnWindows();
+		string directory = CreateDirectoryForTest();
+		WriteScript(directory, "runs", "exit 0", executable: true);
+		WriteScript(directory, "does-not-run", "exit 0", executable: false);
+
+		Assert.IsTrue(NativeMethods.CanExecute(Path.Join(directory, "runs")));
+		Assert.IsFalse(NativeMethods.CanExecute(Path.Join(directory, "does-not-run")));
+	}
+
+	[TestMethod]
 	public async Task ExecuteAsyncShouldFindTheToolOnTheCallersPathWhenTheOverlayRemovesPath()
 	{
 		SkipOnWindows();
