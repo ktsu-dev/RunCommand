@@ -165,6 +165,47 @@ public class LineOutputHandlerTests
 	}
 
 	[TestMethod]
+	[DataRow('\u2028', DisplayName = "LS")]
+	[DataRow('\u2029', DisplayName = "PS")]
+	[DataRow('\u0085', DisplayName = "NEL")]
+	[DataRow('\f', DisplayName = "FF")]
+	public void HandleStandardOutputDataShouldKeepAnUnusualSeparatorInsideTheLine(char separator)
+	{
+		// Arrange
+		string record = $"{{\"a\":\"x{separator}y\"}}";
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardOutput: lines.Add);
+
+		// Act
+		handler.HandleStandardOutputData($"{record}\n{record}\n");
+
+		// Assert
+		string[] expected = [record, record];
+		Assert.AreSequenceEqual(expected, lines);
+	}
+
+	[TestMethod]
+	[DataRow('\u2028', DisplayName = "LS")]
+	[DataRow('\u2029', DisplayName = "PS")]
+	[DataRow('\u0085', DisplayName = "NEL")]
+	[DataRow('\f', DisplayName = "FF")]
+	public void HandleStandardErrorDataShouldKeepAnUnusualSeparatorOnAChunkBoundaryInsideTheLine(char separator)
+	{
+		// Arrange
+		List<string> lines = [];
+		LineOutputHandler handler = new(onStandardError: lines.Add);
+
+		// Act
+		handler.HandleStandardErrorData($"x{separator}");
+		handler.HandleStandardErrorData($"y\nz{separator}");
+		handler.HandleStandardErrorData("\n");
+
+		// Assert
+		string[] expected = [$"x{separator}y", $"z{separator}"];
+		Assert.AreSequenceEqual(expected, lines);
+	}
+
+	[TestMethod]
 	public void CompleteShouldDeliverTheFinalUnterminatedLine()
 	{
 		// Arrange
