@@ -504,8 +504,8 @@ public static class RunCommand
 	/// <param name="directory">A directory from the search path.</param>
 	/// <param name="fileName">The file name to look for.</param>
 	/// <returns>
-	/// The full path, or <see langword="null"/> if there is no such file. Outside Windows the file also needs an
-	/// execute permission bit, where the platform exposes one.
+	/// The full path, or <see langword="null"/> if there is no such file. Outside Windows the calling process also
+	/// needs permission to execute the file, as <c>access(X_OK)</c> reports it, on every target framework.
 	/// </returns>
 	private static string? TryExecutable(string directory, string fileName)
 	{
@@ -524,13 +524,10 @@ public static class RunCommand
 				return null;
 			}
 
-#if NET7_0_OR_GREATER
-			const UnixFileMode anyExecute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
-			if (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(candidate) & anyExecute) == 0)
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && !NativeMethods.CanExecute(candidate))
 			{
 				return null;
 			}
-#endif
 
 			return candidate;
 		}
