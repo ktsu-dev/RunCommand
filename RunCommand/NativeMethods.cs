@@ -26,11 +26,19 @@ internal static class NativeMethods
 	/// would accept a <c>0700</c> file another user owns, and <c>File.GetUnixFileMode</c> does not exist below .NET 7,
 	/// so the net5.0, net6.0 and netstandard builds had no check at all (ktsu-dev/RunCommand#139).
 	/// </remarks>
-	internal static bool CanExecute(string path)
+	internal static bool CanExecute(string path) => CanExecute(path, Access);
+
+	/// <summary>
+	/// Returns whether <paramref name="access"/> reports that the calling process may execute <paramref name="path"/>.
+	/// </summary>
+	/// <param name="path">The full path of an existing file.</param>
+	/// <param name="access">Performs <c>access(path, mode)</c>. A parameter so tests can make the C library unavailable.</param>
+	/// <returns>As <see cref="CanExecute(string)"/>.</returns>
+	internal static bool CanExecute(string path, Func<string, int, int> access)
 	{
 		try
 		{
-			return Access(path, ExecuteOk) == 0;
+			return access(path, ExecuteOk) == 0;
 		}
 		catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
 		{

@@ -977,6 +977,14 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public void CanExecuteShouldKeepTheFileWhenTheCLibraryCannotBeCalled()
+	{
+		// Without access(), the search keeps every existing file, as it did before it checked permissions.
+		Assert.IsTrue(NativeMethods.CanExecute("/any/file", (_, _) => throw new DllNotFoundException("libc")));
+		Assert.IsTrue(NativeMethods.CanExecute("/any/file", (_, _) => throw new EntryPointNotFoundException("access")));
+	}
+
+	[TestMethod]
 	public async Task ExecuteAsyncShouldFindTheToolOnTheCallersPathWhenTheOverlayRemovesPath()
 	{
 		SkipOnWindows();
