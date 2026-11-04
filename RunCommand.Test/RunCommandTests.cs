@@ -14,6 +14,8 @@ public class RunCommandTests
 	private static readonly string[] ExpectedALast = ["a", "last"];
 	private static readonly string[] ExpectedALastNext = ["a", "last", "next"];
 	private static readonly string[] ExpectedDone = ["done"];
+	private static readonly string[] ExpectedOverlayCopy = ["ran overlay copy"];
+	private static readonly string[] ExpectedStarted = ["started"];
 
 	private static string GetCopyCommand(string source, string destination) =>
 		RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
@@ -741,6 +743,56 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	[DataRow("")]
+	[DataRow("sub")]
+	public async Task ExecuteAsyncShouldResolveARelativeExecutablePathAgainstTheWorkingDirectory(string subdirectory)
+	{
+		// A same-named script sits in the caller's current directory too, so running the wrong copy
+		// shows up in the output rather than as a start failure
+		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+		string scriptName = $"{nameof(RunCommandTests)}-{Guid.NewGuid():N}{(isWindows ? ".cmd" : ".sh")}";
+		string relativePath = string.IsNullOrEmpty(subdirectory) ? $".{Path.DirectorySeparatorChar}{scriptName}" : $"{subdirectory}/{scriptName}";
+
+		string workingDirectory = CreateDirectoryForTest(nameof(ExecuteAsyncShouldResolveARelativeExecutablePathAgainstTheWorkingDirectory) + subdirectory);
+		string intendedScript = Path.Join(workingDirectory, subdirectory, scriptName);
+		string callerScript = Path.Join(Environment.CurrentDirectory, subdirectory, scriptName);
+		_ = Directory.CreateDirectory(Path.GetDirectoryName(intendedScript)!);
+		_ = Directory.CreateDirectory(Path.GetDirectoryName(callerScript)!);
+		WriteScript(intendedScript, "working-directory");
+		WriteScript(callerScript, "caller");
+
+		try
+		{
+			List<string> output = [];
+			int exitCode = await RunCommand.ExecuteAsync(
+				relativePath,
+				[],
+				new LineOutputHandler(onStandardOutput: output.Add),
+				new CommandOptions { WorkingDirectory = AbsoluteDirectoryPath.Create(workingDirectory) }).ConfigureAwait(false);
+
+			Assert.AreEqual(0, exitCode, "Expected the script to run successfully.");
+			Assert.AreEqual("working-directory", string.Concat(output).Trim(), "Expected the script in the working directory to run, not the caller's copy.");
+		}
+		finally
+		{
+			File.Delete(callerScript);
+			File.Delete(intendedScript);
+		}
+	}
+
+	private static void WriteScript(string path, string message)
+	{
+		if (OperatingSystem.IsWindows())
+		{
+			File.WriteAllText(path, $"@echo {message}\r\n");
+			return;
+		}
+
+		File.WriteAllText(path, $"#!/bin/sh\necho {message}\n");
+		File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+	}
+
+	[TestMethod]
 	public async Task ExecuteAsyncShouldInheritTheCurrentDirectoryWhenNoWorkingDirectoryIsGiven()
 	{
 		(string fileName, string[] arguments) = GetPrintWorkingDirectoryCommand();
@@ -837,6 +889,141 @@ public class RunCommandTests
 		{
 			Environment.SetEnvironmentVariable(name, null);
 		}
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldStartAToolThatOnlyTheOverlayPathHolds()
+	{
+		SkipOnWindows();
+		string directory = CreateDirectoryForTest();
+		string name = $"runcommand-{nameof(ExecuteAsyncShouldStartAToolThatOnlyTheOverlayPathHolds)}";
+		WriteScript(directory, name, "echo ran overlay copy", executable: true);
+
+		List<string> output = await RunOnOverlayPathAsync(name, directory).ConfigureAwait(false);
+
+		Assert.AreSequenceEqual(ExpectedOverlayCopy, output, "Expected the tool on the overlay PATH to start.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldPreferTheOverlayPathOverTheCallersPath()
+	{
+		SkipOnWindows();
+
+		// echo is on the caller's PATH too, so the old lookup would have started that one and printed the argument.
+		string directory = CreateDirectoryForTest();
+		WriteScript(directory, "echo", "printf 'ran overlay copy\\n'", executable: true);
+
+		List<string> output = await RunOnOverlayPathAsync("echo", directory, "ran caller copy").ConfigureAwait(false);
+
+		Assert.AreSequenceEqual(ExpectedOverlayCopy, output, "Expected the overlay PATH to choose which echo runs.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldSkipANonExecutableFileOnTheOverlayPath()
+	{
+		SkipOnWindows();
+		string root = CreateDirectoryForTest();
+		string notExecutable = Directory.CreateDirectory(Path.Join(root, "a")).FullName;
+		string executable = Directory.CreateDirectory(Path.Join(root, "b")).FullName;
+		string name = $"runcommand-{nameof(ExecuteAsyncShouldSkipANonExecutableFileOnTheOverlayPath)}";
+		WriteScript(notExecutable, name, "echo ran the file that cannot run", executable: false);
+		WriteScript(executable, name, "echo ran overlay copy", executable: true);
+
+		List<string> output = await RunOnOverlayPathAsync(name, $"{notExecutable}{Path.PathSeparator}{executable}").ConfigureAwait(false);
+
+		Assert.AreSequenceEqual(ExpectedOverlayCopy, output, "Expected the search to pass over a file without an execute bit, as a shell does.");
+	}
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldFindTheToolOnTheCallersPathWhenTheOverlayRemovesPath()
+	{
+		SkipOnWindows();
+		List<string> output = [];
+
+		int exitCode = await RunCommand.ExecuteAsync(
+			"sh",
+			["-c", "echo started"],
+			new LineOutputHandler(onStandardOutput: output.Add),
+			new CommandOptions { EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = null } }).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCode);
+		Assert.AreSequenceEqual(ExpectedStarted, output, "Expected a removed PATH to leave the usual lookup in place.");
+	}
+
+	[TestMethod]
+	public void FindOverlayPathShouldMatchTheKeyIgnoringCaseOnlyOnWindows()
+	{
+		Dictionary<string, string?> overlay = new(StringComparer.Ordinal) { ["Path"] = "/pinned" };
+
+		Assert.AreEqual("/pinned", RunCommand.FindOverlayPath(overlay, isWindows: true));
+		Assert.IsNull(RunCommand.FindOverlayPath(overlay, isWindows: false));
+	}
+
+	[TestMethod]
+	public void ResolveOnSearchPathShouldApplyPathExtOnWindows()
+	{
+		string directory = CreateDirectoryForTest();
+		string name = $"tool-{nameof(ResolveOnSearchPathShouldApplyPathExtOnWindows)}";
+		WriteScript(directory, $"{name}.CMD", "exit 0", executable: true);
+		Dictionary<string, string?> environment = new() { ["PATHEXT"] = ".EXE;.CMD" };
+
+		string? resolved = RunCommand.ResolveOnSearchPath(name, directory, environment, isWindows: true);
+
+		Assert.AreEqual(Path.Join(directory, $"{name}.CMD"), resolved);
+	}
+
+	[TestMethod]
+	public void ResolveOnSearchPathShouldLeaveANameWithADirectoryPartAlone()
+	{
+		string directory = CreateDirectoryForTest();
+		WriteScript(directory, "tool", "exit 0", executable: true);
+
+		Assert.IsNull(RunCommand.ResolveOnSearchPath("./tool", directory, new Dictionary<string, string?>(), isWindows: false));
+		Assert.IsNull(RunCommand.ResolveOnSearchPath(@"bin\tool", directory, new Dictionary<string, string?>(), isWindows: true));
+		Assert.IsNull(RunCommand.ResolveOnSearchPath("C:tool", directory, new Dictionary<string, string?>(), isWindows: true));
+	}
+
+	[TestMethod]
+	public void ResolveOnSearchPathShouldSkipRelativeAndMissingEntries()
+	{
+		string directory = CreateDirectoryForTest();
+		string name = $"tool-{nameof(ResolveOnSearchPathShouldSkipRelativeAndMissingEntries)}";
+		WriteScript(directory, name, "exit 0", executable: true);
+		string searchPath = string.Join(Path.PathSeparator, "relative", Path.Join(directory, "missing"), "", directory);
+
+		Assert.AreEqual(Path.Join(directory, name), RunCommand.ResolveOnSearchPath(name, searchPath, new Dictionary<string, string?>(), isWindows: false));
+		Assert.IsNull(RunCommand.ResolveOnSearchPath(name, "relative", new Dictionary<string, string?>(), isWindows: false));
+	}
+
+	private static void SkipOnWindows()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Uses shell scripts and execute permission bits. The lookup this covers is shared, and the Unix legs cover it.");
+		}
+	}
+
+	private static void WriteScript(string directory, string name, string body, bool executable)
+	{
+		string path = Path.Join(directory, name);
+		File.WriteAllText(path, $"#!/bin/sh\n{body}\n");
+		if (!OperatingSystem.IsWindows())
+		{
+			UnixFileMode mode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+			File.SetUnixFileMode(path, executable ? mode | UnixFileMode.UserExecute : mode);
+		}
+	}
+
+	private static async Task<List<string>> RunOnOverlayPathAsync(string fileName, string overlayDirectories, params string[] arguments)
+	{
+		List<string> output = [];
+		int exitCode = await RunCommand.ExecuteAsync(
+			fileName,
+			arguments,
+			new LineOutputHandler(onStandardOutput: output.Add),
+			new CommandOptions { EnvironmentVariables = new Dictionary<string, string?> { ["PATH"] = $"{overlayDirectories}{Path.PathSeparator}/usr/bin{Path.PathSeparator}/bin" } }).ConfigureAwait(false);
+		Assert.AreEqual(0, exitCode);
+		return output;
 	}
 
 	[TestMethod]
@@ -1422,6 +1609,48 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public async Task LineOutputHandlerSharedByOverlappingRunsShouldKeepEachRunsLinesApart()
+	{
+		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+		{
+			Assert.Inconclusive("Needs sh to print part of a line, pause, then finish it. The per-run splitting this covers is platform independent, so the other legs cover it.");
+		}
+
+		// ktsu-dev/RunCommand#130: the second run's Reset threw away the first run's partial line, and
+		// both runs then appended to the same buffer, so their text came out joined into one line.
+		List<string> lines = [];
+		using SemaphoreSlim firstPartArrived = new(0);
+		LineOutputHandler handler = new(line =>
+		{
+			lock (lines)
+			{
+				lines.Add(line);
+			}
+		});
+
+		Task<int> first = RunCommand.ExecuteAsync(
+			"sh",
+			["-c", "printf AAAA; sleep 1; printf 'AAAA\\n'"],
+			new SignallingLineOutputHandler(handler, firstPartArrived));
+
+		Assert.IsTrue(await firstPartArrived.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false), "Expected the first run's partial line to arrive.");
+
+		Task<int> second = RunCommand.ExecuteAsync("sh", ["-c", "printf BBBB; sleep 0.2; printf 'BBBB\\n'"], handler);
+
+		int[] exitCodes = await Task.WhenAll(first, second).ConfigureAwait(false);
+
+		Assert.AreEqual(0, exitCodes[0], "The first run should succeed.");
+		Assert.AreEqual(0, exitCodes[1], "The second run should succeed.");
+		List<string> sorted;
+		lock (lines)
+		{
+			sorted = [.. lines.Order(StringComparer.Ordinal)];
+		}
+
+		Assert.AreEqual("AAAAAAAA | BBBBBBBB", string.Join(" | ", sorted));
+	}
+
+	[TestMethod]
 	public async Task ReusedLineOutputHandlerShouldDropTheLineARunWhoseCallbackThrewLeftUnfinished()
 	{
 		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -1445,7 +1674,8 @@ public class RunCommandTests
 		await Assert.ThrowsAsync<InvalidOperationException>(
 			() => RunCommand.ExecuteAsync("sh", ["-c", "printf partial; sleep 0.5; echo boom >&2; sleep 30"], handler)).ConfigureAwait(false);
 
-		Assert.AreEqual("partial", handler.outputBuffer.ToString(), "The failed run should have left its partial line buffered.");
+		// The failed run's partial line stays in that run's own handler (#130), so nothing is left on this one.
+		Assert.AreEqual(string.Empty, handler.outputBuffer.ToString(), "A run should split lines in its own handler, not the shared one.");
 
 		throwOnError = false;
 		int exitCode = await RunCommand.ExecuteAsync("sh", ["-c", "echo hello"], handler).ConfigureAwait(false);

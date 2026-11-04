@@ -8,6 +8,10 @@ using System.Text;
 /// Handles the output from a command process, processing both standard output and standard error streams.
 /// It processes the data line-by-line, calling the specified actions for each line received.
 /// </summary>
+/// <remarks>
+/// One handler can serve several runs at once. Each run splits its own output into lines, so a partial
+/// line from one run is never joined to another run's output.
+/// </remarks>
 public class LineOutputHandler : OutputHandler
 {
 	/// <summary>
@@ -76,6 +80,15 @@ public class LineOutputHandler : OutputHandler
 		outputBuffer = new();
 		errorBuffer = new();
 	}
+
+	/// <summary>
+	/// Returns a new handler with the same delegates and encoding and empty buffers, so each run splits
+	/// its own output into lines. Two runs sharing this handler's buffers lost one run's partial line and
+	/// joined the two runs' text into one line (ktsu-dev/RunCommand#130).
+	/// </summary>
+	/// <returns>A handler for a single run.</returns>
+	internal override OutputHandler CreateRunHandler() =>
+		new LineOutputHandler(OnStandardOutput, OnStandardError, Encoding);
 
 	/// <summary>
 	/// Invokes <paramref name="onLineReceived"/> with the buffered final line, if there is one, and clears the buffer.
@@ -187,11 +200,13 @@ public class LineOutputHandler : OutputHandler
 	}
 
 	/// <summary>
-	/// Determines whether a character other than CR ends a line, matching the set <c>string.ReplaceLineEndings</c> recognises.
+	/// Determines whether a character other than CR ends a line. Only LF does, matching
+	/// <c>Process.OutputDataReceived</c> and <c>StreamReader.ReadLine</c>: NEL, LS, PS and FF are ordinary characters,
+	/// since tools emit them raw inside JSON strings and a line-delimited record must arrive whole.
 	/// </summary>
 	/// <param name="c">The character to test.</param>
-	/// <returns><see langword="true"/> if <paramref name="c"/> is LF, NEL, LS, PS or FF; otherwise <see langword="false"/>.</returns>
-	private static bool IsLineBreak(char c) => c is '\n' or '\u0085' or '\u2028' or '\u2029' or '\f';
+	/// <returns><see langword="true"/> if <paramref name="c"/> is LF; otherwise <see langword="false"/>.</returns>
+	private static bool IsLineBreak(char c) => c == '\n';
 
 	/// <summary>
 	/// The partial line one stream has delivered so far, and whether its last read ended on a CR.

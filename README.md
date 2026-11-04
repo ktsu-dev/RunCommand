@@ -220,6 +220,8 @@ Without a `WorkingDirectory` the process inherits the current directory of the c
 
 The type is `AbsoluteDirectoryPath` rather than a string on purpose. A relative directory would have to be resolved against the caller's current directory — the process-global state this option exists to avoid depending on, since it is shared by every thread and races with concurrent calls.
 
+A relative executable path that names a directory, such as `./build.sh` or `tools/build.sh`, is resolved against `WorkingDirectory`, the way `cd repo && ./build.sh` works in a shell. Without that, the process would start whichever `build.sh` sits in the caller's current directory. A bare name such as `git` or `dotnet` has no directory part, so it is still found through the usual search, and an absolute path is used as given.
+
 ### Environment Variables
 
 `EnvironmentVariables` is an overlay on the inherited environment, not a replacement: a name you do not list keeps whatever the calling process had. A `null` value removes a variable, which is how you unset something the parent had set:
@@ -232,6 +234,8 @@ EnvironmentVariables = new Dictionary<string, string?>
 ```
 
 Environment variables are the only control surface some tools expose, so this covers behaviour with no command-line equivalent — `GIT_TERMINAL_PROMPT=0` to make an authenticating `git fetch` fail rather than block forever on a prompt no terminal will answer, `GIT_ASKPASS`/`SSH_ASKPASS` to supply credentials without putting them on a command line where any process listing can read them, and `LC_ALL=C` to force stable, machine-parseable output rather than whatever the host locale produces.
+
+When the overlay sets `PATH`, a bare executable name such as `node` or `dotnet` is looked up on that `PATH`, so an overlay can pin which toolchain runs. The first directory holding the name wins. Relative `PATH` entries are skipped. On Windows, a name with no extension is tried with each `PATHEXT` extension. On other platforms the file must have an execute bit. A name with a directory part is a path rather than a name to search for, so it is never looked up. If the overlay `PATH` holds no match, or the overlay leaves `PATH` alone or removes it with `null`, the name is found the usual way, on the calling process's `PATH`.
 
 > **_NOTE:_** _`EnvironmentVariables` cannot be combined with `Elevation.Elevated` on Windows. Elevation requires `UseShellExecute`, which offers nowhere to pass an environment, so the call throws `ArgumentException` rather than silently dropping the variables._
 
@@ -394,7 +398,7 @@ Processes output in raw, undelimited chunks as they arrive from the process.
 
 ### `LineOutputHandler`
 
-Inherits from `OutputHandler` and buffers incoming chunks, invoking the delegates once per complete line. Incomplete trailing data is held until the rest of the line arrives.
+Inherits from `OutputHandler` and buffers incoming chunks, invoking the delegates once per complete line. Incomplete trailing data is held until the rest of the line arrives. Lines end at LF, CR or CRLF, the same as `Process.OutputDataReceived` and `StreamReader.ReadLine`; NEL (U+0085), LS (U+2028), PS (U+2029) and form feed stay inside the line, so line-delimited JSON that carries them raw arrives one record per call.
 
 #### Constructor
 

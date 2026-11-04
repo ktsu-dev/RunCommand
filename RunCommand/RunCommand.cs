@@ -5,6 +5,7 @@ namespace ktsu.RunCommand;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 #if NETSTANDARD2_0
@@ -316,6 +317,33 @@ public static class RunCommand
 		return await RunAsync(startInfo, outputHandler, useElevation, cancellationToken).ConfigureAwait(false);
 	}
 
+	/// <summary>
+	/// Resolves a relative executable path that names a directory, such as <c>./build.sh</c> or
+	/// <c>tools/build.sh</c>, against the working directory the command runs in.
+	/// </summary>
+	/// <param name="fileName">The executable as the caller gave it.</param>
+	/// <param name="workingDirectory">The command's working directory, or <see langword="null"/> if none was set.</param>
+	/// <param name="isWindows">Whether a backslash also separates directories.</param>
+	/// <returns>The path to start.</returns>
+	/// <remarks>
+	/// Process.Start resolves a relative path against the calling process's current directory, not
+	/// against <see cref="ProcessStartInfo.WorkingDirectory"/>, so without this <c>./build.sh</c> ran
+	/// the caller's copy, or failed to start, whatever <see cref="CommandOptions.WorkingDirectory"/>
+	/// said. Resolving it here does what <c>cd dir &amp;&amp; ./build.sh</c> does in a shell. A bare name
+	/// such as <c>git</c> has no directory part and keeps the usual search, and an absolute path is
+	/// already unambiguous.
+	/// </remarks>
+	private static string ResolveFileName(string fileName, string? workingDirectory, bool isWindows)
+	{
+		if (workingDirectory is null || Path.IsPathRooted(fileName))
+		{
+			return fileName;
+		}
+
+		bool hasDirectoryPart = fileName.Contains('/') || (isWindows && fileName.Contains('\\'));
+		return hasDirectoryPart ? Path.GetFullPath(Path.Combine(workingDirectory, fileName)) : fileName;
+	}
+
 	private static ProcessStartInfo CreateStartInfo(string fileName, OutputHandler outputHandler, CommandOptions options, out bool useElevation)
 	{
 		bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -345,7 +373,7 @@ public static class RunCommand
 
 		ProcessStartInfo startInfo = new()
 		{
-			FileName = fileName,
+			FileName = ResolveFileName(fileName, options.WorkingDirectory?.WeakString, isWindows),
 			CreateNoWindow = true,
 		};
 
@@ -381,6 +409,12 @@ public static class RunCommand
 						startInfo.Environment[variable.Key] = variable.Value;
 					}
 				}
+
+				string? overlayPath = FindOverlayPath(options.EnvironmentVariables, isWindows);
+				if (overlayPath is not null)
+				{
+					startInfo.FileName = ResolveOnSearchPath(startInfo.FileName, overlayPath, startInfo.Environment, isWindows) ?? startInfo.FileName;
+				}
 			}
 
 			if (isWindows)
@@ -390,6 +424,121 @@ public static class RunCommand
 		}
 
 		return startInfo;
+	}
+
+	/// <summary>
+	/// Returns the <c>PATH</c> value an environment overlay sets, if it sets one.
+	/// </summary>
+	/// <param name="environmentVariables">The overlay the caller passed.</param>
+	/// <param name="isWindows">Whether variable names compare case-insensitively.</param>
+	/// <returns>
+	/// The overlay's <c>PATH</c>, or <see langword="null"/> when the overlay leaves <c>PATH</c> alone or removes it.
+	/// A removed <c>PATH</c> gives no directories to search, so the executable is found the way it is without an
+	/// overlay.
+	/// </returns>
+	internal static string? FindOverlayPath(IReadOnlyDictionary<string, string?> environmentVariables, bool isWindows)
+	{
+		StringComparison comparison = isWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+		string? path = null;
+		foreach (KeyValuePair<string, string?> variable in environmentVariables)
+		{
+			if (string.Equals(variable.Key, "PATH", comparison))
+			{
+				path = variable.Value;
+			}
+		}
+
+		return path;
+	}
+
+	/// <summary>
+	/// Looks a bare executable name up on the <c>PATH</c> an environment overlay gives the command.
+	/// </summary>
+	/// <param name="fileName">The executable as the caller gave it.</param>
+	/// <param name="searchPath">The overlay's <c>PATH</c>.</param>
+	/// <param name="environment">The command's environment, which supplies <c>PATHEXT</c> on Windows.</param>
+	/// <param name="isWindows">Whether to try the <c>PATHEXT</c> extensions and accept a backslash as a separator.</param>
+	/// <returns>The full path of the first match, or <see langword="null"/> to keep the usual lookup.</returns>
+	/// <remarks>
+	/// With <see cref="ProcessStartInfo.UseShellExecute"/> off, <c>Process.Start</c> searches the calling process's
+	/// <c>PATH</c>, not the one in <see cref="ProcessStartInfo.Environment"/>. Without this, an overlay that points
+	/// <c>PATH</c> at a pinned toolchain either failed to start a tool only it holds or started a same-named tool from
+	/// the caller's <c>PATH</c>. A name with a directory part is a path rather than a name to search for, so it is
+	/// left alone, and so are relative <c>PATH</c> entries, which would otherwise depend on the caller's directory.
+	/// </remarks>
+	internal static string? ResolveOnSearchPath(string fileName, string searchPath, IDictionary<string, string?> environment, bool isWindows)
+	{
+		bool hasDirectoryPart = fileName.Contains('/') || (isWindows && (fileName.Contains('\\') || fileName.Contains(':')));
+		if (fileName.Length == 0 || hasDirectoryPart)
+		{
+			return null;
+		}
+
+		string[] candidates = [fileName];
+		if (isWindows && !Path.HasExtension(fileName))
+		{
+			_ = environment.TryGetValue("PATHEXT", out string? pathExt);
+			string[] extensions = (pathExt ?? ".COM;.EXE;.BAT;.CMD").Split([';'], StringSplitOptions.RemoveEmptyEntries);
+			candidates = Array.ConvertAll(extensions, extension => fileName + extension.Trim());
+		}
+
+		foreach (string directory in searchPath.Split([Path.PathSeparator], StringSplitOptions.RemoveEmptyEntries))
+		{
+			foreach (string candidate in candidates)
+			{
+				string? match = TryExecutable(directory.Trim().Trim('"'), candidate);
+				if (match is not null)
+				{
+					return match;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/// <summary>
+	/// Returns the full path of <paramref name="fileName"/> in <paramref name="directory"/> if it is a file the
+	/// command could start.
+	/// </summary>
+	/// <param name="directory">A directory from the search path.</param>
+	/// <param name="fileName">The file name to look for.</param>
+	/// <returns>
+	/// The full path, or <see langword="null"/> if there is no such file. Outside Windows the file also needs an
+	/// execute permission bit, where the platform exposes one.
+	/// </returns>
+	private static string? TryExecutable(string directory, string fileName)
+	{
+		try
+		{
+			// A rooted name would make Path.Combine drop the directory. The caller only passes bare names, so this
+			// is a guard rather than a case that arises.
+			if (!Path.IsPathRooted(directory) || Path.IsPathRooted(fileName))
+			{
+				return null;
+			}
+
+			string candidate = Path.Combine(directory, fileName);
+			if (!File.Exists(candidate))
+			{
+				return null;
+			}
+
+#if NET7_0_OR_GREATER
+			const UnixFileMode anyExecute = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+			if (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(candidate) & anyExecute) == 0)
+			{
+				return null;
+			}
+#endif
+
+			return candidate;
+		}
+		catch (Exception exception) when (exception is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+		{
+			// An entry that is not a usable path is skipped, the way a shell skips it.
+			return null;
+		}
 	}
 
 #if NETSTANDARD2_0
@@ -460,8 +609,10 @@ public static class RunCommand
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 
-		// A handler can be reused, and a run that was cancelled or failed never reached Complete, so
-		// whatever partial line it left behind would otherwise be glued onto this run's first line.
+		// A handler can be reused, including by runs that overlap, so each run feeds a handler of its
+		// own: a partial line one run leaves behind, whether it was cancelled, failed or is still going,
+		// is never glued onto another run's output. Reset covers a stateful handler that returns itself.
+		outputHandler = outputHandler.CreateRunHandler();
 		outputHandler.Reset();
 
 		using Process process = new() { StartInfo = startInfo };

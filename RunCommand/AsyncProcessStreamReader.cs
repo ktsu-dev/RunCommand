@@ -149,13 +149,10 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 	/// <param name="buffer">The buffer each read fills.</param>
 	/// <param name="onData">The handler each chunk is passed to.</param>
 	/// <param name="isStandardOutput">Whether the stream is standard output.</param>
-	private async Task ReadToEnd(StreamReader streamReader, char[] buffer, Action<string>? onData, bool isStandardOutput)
-	{
-		int charsRead;
-		while ((charsRead = await streamReader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+	private Task ReadToEnd(StreamReader streamReader, char[] buffer, Action<string>? onData, bool isStandardOutput) =>
+		ReadChunks(streamReader, buffer, chunk =>
 		{
-			string data = new(buffer, 0, charsRead);
-			data = StripLeadingByteOrderMark(data, isStandardOutput);
+			string data = StripLeadingByteOrderMark(chunk, isStandardOutput);
 
 			if (data.Length > 0 && onData is not null)
 			{
@@ -164,6 +161,42 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 					onData(data);
 				}
 			}
+		});
+
+	/// <summary>
+	/// Reads <paramref name="reader"/> until end of stream, handing each read to
+	/// <paramref name="onChunk"/> without ever splitting a surrogate pair between two chunks.
+	/// </summary>
+	/// <remarks>
+	/// A read stops wherever the buffer fills, which can be between the two halves of a surrogate
+	/// pair. Passed on as it was, one chunk ended with a lone high surrogate and the next began with
+	/// a lone low surrogate, so a handler that encoded or serialized each chunk on its own wrote two
+	/// replacement characters instead of the one character the command printed. A trailing high
+	/// surrogate is therefore held back and put in front of the next read, and handed over on its own
+	/// only when the stream ends without the low half it was waiting for.
+	/// </remarks>
+	/// <param name="reader">The reader to drain.</param>
+	/// <param name="buffer">The buffer each read fills.</param>
+	/// <param name="onChunk">The callback each non-empty chunk is passed to.</param>
+	internal static async Task ReadChunks(TextReader reader, char[] buffer, Action<string> onChunk)
+	{
+		string heldBack = string.Empty;
+		int charsRead;
+		while ((charsRead = await reader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+		{
+			int length = char.IsHighSurrogate(buffer[charsRead - 1]) ? charsRead - 1 : charsRead;
+			string data = heldBack + new string(buffer, 0, length);
+			heldBack = length == charsRead ? string.Empty : buffer[charsRead - 1].ToString();
+
+			if (data.Length > 0)
+			{
+				onChunk(data);
+			}
+		}
+
+		if (heldBack.Length > 0)
+		{
+			onChunk(heldBack);
 		}
 	}
 
