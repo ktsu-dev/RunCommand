@@ -489,6 +489,56 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public void KillEntireTreeWhereSupportedShouldEndTheGrandchildrenToo()
+	{
+		SkipOnWindows();
+
+		// The netstandard builds, which .NET Core 3.x and .NET 5–7 apps load, kill through this method. Killing only
+		// the shell would leave its background sleep running (#134).
+		using Process process = Process.Start(new ProcessStartInfo("sh", ["-c", "sleep 300 & echo $!; wait"])
+		{
+			UseShellExecute = false,
+			RedirectStandardOutput = true,
+		})!;
+		int grandchild = int.Parse(process.StandardOutput.ReadLine()!, System.Globalization.CultureInfo.InvariantCulture);
+
+		try
+		{
+			RunCommand.KillEntireTreeWhereSupported(process);
+			process.WaitForExit();
+
+			Stopwatch stopwatch = Stopwatch.StartNew();
+			while (IsRunning(grandchild) && stopwatch.Elapsed < TimeSpan.FromSeconds(5))
+			{
+				Thread.Sleep(20);
+			}
+
+			Assert.IsFalse(IsRunning(grandchild), "Expected the shell's background sleep to be killed with it.");
+		}
+		finally
+		{
+			if (IsRunning(grandchild))
+			{
+				using Process leftover = Process.GetProcessById(grandchild);
+				leftover.Kill();
+			}
+		}
+
+		static bool IsRunning(int processId)
+		{
+			try
+			{
+				using Process candidate = Process.GetProcessById(processId);
+				return !candidate.HasExited;
+			}
+			catch (ArgumentException)
+			{
+				return false;
+			}
+		}
+	}
+
+	[TestMethod]
 	public async Task CancelShouldNotRunTheCallersContinuationInline()
 	{
 		using CancellationTokenSource cancellationTokenSource = new();
