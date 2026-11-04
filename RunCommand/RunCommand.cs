@@ -751,9 +751,21 @@ public static class RunCommand
 	/// The overload's own exceptions are rethrown unwrapped, so <see cref="TryKill(Process, Action{Process})"/>
 	/// still treats them as best effort. Compiled on every target so the tests can reach it.
 	/// </remarks>
-	internal static void KillEntireTreeWhereSupported(Process process)
+	internal static void KillEntireTreeWhereSupported(Process process) =>
+		KillEntireTreeWhereSupported(process, KillEntireProcessTree);
+
+	/// <summary>
+	/// Kills <paramref name="process"/> through <paramref name="killEntireProcessTree"/>, or alone when it is
+	/// <see langword="null"/>.
+	/// </summary>
+	/// <param name="process">The process to kill.</param>
+	/// <param name="killEntireProcessTree">
+	/// <c>Process.Kill(bool)</c>, or <see langword="null"/> where the runtime lacks it. A parameter so tests can
+	/// stand in for .NET Framework and Mono.
+	/// </param>
+	internal static void KillEntireTreeWhereSupported(Process process, MethodInfo? killEntireProcessTree)
 	{
-		if (KillEntireProcessTree is null)
+		if (killEntireProcessTree is null)
 		{
 			process.Kill();
 			return;
@@ -761,7 +773,7 @@ public static class RunCommand
 
 		try
 		{
-			_ = KillEntireProcessTree.Invoke(process, [true]);
+			_ = killEntireProcessTree.Invoke(process, [true]);
 		}
 		catch (TargetInvocationException exception) when (exception.InnerException is not null)
 		{
