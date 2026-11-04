@@ -8,6 +8,10 @@ using System.Text;
 /// Handles the output from a command process, processing both standard output and standard error streams.
 /// It processes the data line-by-line, calling the specified actions for each line received.
 /// </summary>
+/// <remarks>
+/// One handler can serve several runs at once. Each run splits its own output into lines, so a partial
+/// line from one run is never joined to another run's output.
+/// </remarks>
 public class LineOutputHandler : OutputHandler
 {
 	/// <summary>
@@ -76,6 +80,15 @@ public class LineOutputHandler : OutputHandler
 		outputBuffer = new();
 		errorBuffer = new();
 	}
+
+	/// <summary>
+	/// Returns a new handler with the same delegates and encoding and empty buffers, so each run splits
+	/// its own output into lines. Two runs sharing this handler's buffers lost one run's partial line and
+	/// joined the two runs' text into one line (ktsu-dev/RunCommand#130).
+	/// </summary>
+	/// <returns>A handler for a single run.</returns>
+	internal override OutputHandler CreateRunHandler() =>
+		new LineOutputHandler(OnStandardOutput, OnStandardError, Encoding);
 
 	/// <summary>
 	/// Invokes <paramref name="onLineReceived"/> with the buffered final line, if there is one, and clears the buffer.
