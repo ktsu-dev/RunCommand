@@ -507,13 +507,9 @@ public class RunCommandTests
 			RunCommand.KillEntireTreeWhereSupported(process);
 			process.WaitForExit();
 
-			Stopwatch stopwatch = Stopwatch.StartNew();
-			while (IsRunning(grandchild) && stopwatch.Elapsed < TimeSpan.FromSeconds(5))
-			{
-				Thread.Sleep(20);
-			}
+			bool ended = SpinWait.SpinUntil(() => !IsRunning(grandchild), TimeSpan.FromSeconds(5));
 
-			Assert.IsFalse(IsRunning(grandchild), "Expected the shell's background sleep to be killed with it.");
+			Assert.IsTrue(ended, "Expected the shell's background sleep to be killed with it.");
 		}
 		finally
 		{
