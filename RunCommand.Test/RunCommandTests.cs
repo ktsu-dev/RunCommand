@@ -3,6 +3,7 @@
 namespace ktsu.RunCommand.Test;
 
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Runtime.InteropServices;
@@ -1183,6 +1184,57 @@ public class RunCommandTests
 		string path = WriteBytesForTest(bytes, nameof(AUtf8ByteOrderMarkIsStrippedFromTheStartOfOutput));
 
 		Assert.AreEqual("hello", RunOverPath(path, StrictUtf8));
+	}
+
+	/// <summary>
+	/// Returns the encoding a byte-order-mark test names, along with that encoding's own BOM.
+	/// </summary>
+	/// <remarks>
+	/// Named rather than passed because <see cref="DataRowAttribute"/> only takes constants. The
+	/// cases split on whether the encoding has a preamble: <see cref="StreamReader"/> skips a
+	/// matching preamble itself whatever detectEncodingFromByteOrderMarks says, so one with a
+	/// preamble must not be stripped a second time by the library.
+	/// </remarks>
+	private static (Encoding Encoding, byte[] Bom) GetByteOrderMarkCase(string name) => name switch
+	{
+		"Encoding.UTF8" => (Encoding.UTF8, [0xEF, 0xBB, 0xBF]),
+		"UTF8Encoding(false)" => (new UTF8Encoding(false), [0xEF, 0xBB, 0xBF]),
+		"Encoding.Unicode" => (Encoding.Unicode, [0xFF, 0xFE]),
+		"UnicodeEncoding(false, false)" => (new UnicodeEncoding(bigEndian: false, byteOrderMark: false), [0xFF, 0xFE]),
+		_ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown encoding case."),
+	};
+
+	[TestMethod]
+	[DataRow("Encoding.UTF8")]
+	[DataRow("UTF8Encoding(false)")]
+	[DataRow("Encoding.Unicode")]
+	[DataRow("UnicodeEncoding(false, false)")]
+	public void OnlyTheByteOrderMarkIsStrippedWhenARealU_FEFFFollowsIt(string encodingName)
+	{
+		// A BOM, then U+FEFF that is part of the output, then "A". The BOM goes and the content
+		// stays, whichever of two equivalent encodings the caller passed. With a preamble the reader
+		// dropped the BOM and the library then dropped the real U+FEFF after it.
+		(Encoding encoding, byte[] bom) = GetByteOrderMarkCase(encodingName);
+		byte[] bytes = [.. bom, .. encoding.GetBytes("\uFEFFA")];
+		string path = WriteBytesForTest(bytes, $"{nameof(OnlyTheByteOrderMarkIsStrippedWhenARealU_FEFFFollowsIt)}.{new string([.. encodingName.Where(char.IsLetterOrDigit)])}");
+
+		string output = RunOverPath(path, encoding);
+
+		Assert.AreEqual("FEFF 0041", string.Join(' ', output.Select(c => ((int)c).ToString("X4", CultureInfo.InvariantCulture))));
+	}
+
+	[TestMethod]
+	[DataRow("Encoding.UTF8")]
+	[DataRow("UTF8Encoding(false)")]
+	[DataRow("Encoding.Unicode")]
+	[DataRow("UnicodeEncoding(false, false)")]
+	public void ALoneByteOrderMarkIsStrippedWhicheverEncodingReadsIt(string encodingName)
+	{
+		(Encoding encoding, byte[] bom) = GetByteOrderMarkCase(encodingName);
+		byte[] bytes = [.. bom, .. encoding.GetBytes("hello")];
+		string path = WriteBytesForTest(bytes, $"{nameof(ALoneByteOrderMarkIsStrippedWhicheverEncodingReadsIt)}.{new string([.. encodingName.Where(char.IsLetterOrDigit)])}");
+
+		Assert.AreEqual("hello", RunOverPath(path, encoding));
 	}
 
 	[TestMethod]
