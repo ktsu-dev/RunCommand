@@ -105,7 +105,13 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 				return false;
 			}
 
-			if (finished.IsFaulted)
+			// Canceled counts as a failure too. A handler that throws OperationCanceledException (its
+			// own token's ThrowIfCancellationRequested, or a call it awaited timing out) ends its read
+			// Canceled rather than Faulted. Taken for a clean finish, that read stopped draining its
+			// pipe while the loop went on waiting for the other one, so the run either reported
+			// success or hung on a command blocked writing. Cancellation from the caller's own token
+			// arrives through `cancelled` above, never through a read.
+			if (finished.IsFaulted || finished.IsCanceled)
 			{
 				Abandon(outputTask, errorTask);
 
