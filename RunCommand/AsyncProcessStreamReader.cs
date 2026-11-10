@@ -32,6 +32,12 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 	private readonly StreamReader errorStream =
 		new(process.StandardError.BaseStream, outputHandler.Encoding, detectEncodingFromByteOrderMarks: false);
 
+	// StreamReader skips the encoding's own preamble at the start of a stream whatever
+	// detectEncodingFromByteOrderMarks says, so for an encoding that has one (Encoding.UTF8, the
+	// default, and Encoding.Unicode among them) the BOM is already gone by the time a chunk arrives.
+	// Stripping again there removed a U+FEFF that was real output.
+	private readonly bool readerSkipsByteOrderMark = outputHandler.Encoding.GetPreamble().Length > 0;
+
 	public void Dispose()
 	{
 		outputStream.Dispose();
@@ -204,11 +210,13 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 	/// Drops a byte order mark from the front of a stream's first chunk.
 	/// </summary>
 	/// <remarks>
-	/// Turning off the detection above also turned off the stripping that came with it, and a
-	/// leading U+FEFF in captured output is a change no caller asked for. Every encoding decodes its
-	/// own BOM to U+FEFF, so dropping that one character covers each of them without guessing at the
-	/// encoding. A BOM belonging to a different encoding no longer decodes to U+FEFF, which is
-	/// exactly the case that should surface as mis-decoded bytes rather than be silently honoured.
+	/// Turning off the detection above also turned off the stripping that came with it for an
+	/// encoding with no preamble, and a leading U+FEFF in captured output is a change no caller asked
+	/// for. Every encoding decodes its own BOM to U+FEFF, so dropping that one character covers each
+	/// of them without guessing at the encoding. A BOM belonging to a different encoding no longer
+	/// decodes to U+FEFF, which is exactly the case that should surface as mis-decoded bytes rather
+	/// than be silently honoured. An encoding with a preamble has had its BOM skipped by the reader
+	/// already, so a U+FEFF at the front of its first chunk is content and is kept.
 	/// </remarks>
 	/// <param name="data">The chunk just read.</param>
 	/// <param name="isStandardOutput">Whether the chunk came from standard output.</param>
@@ -226,7 +234,7 @@ internal sealed class AsyncProcessStreamReader(Process process, OutputHandler ou
 			errorHasEmitted = true;
 		}
 
-		if (hasEmitted || data[0] != ByteOrderMark)
+		if (hasEmitted || readerSkipsByteOrderMark || data[0] != ByteOrderMark)
 		{
 			return data;
 		}
