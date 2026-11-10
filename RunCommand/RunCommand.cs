@@ -332,6 +332,13 @@ public static class RunCommand
 	/// said. Resolving it here does what <c>cd dir &amp;&amp; ./build.sh</c> does in a shell. A bare name
 	/// such as <c>git</c> has no directory part and keeps the usual search, and an absolute path is
 	/// already unambiguous.
+	/// <para>
+	/// Outside Windows the combined path is not normalized. <see cref="Path.GetFullPath(string)"/>
+	/// removes <c>..</c> as text, so <c>link/../tool.sh</c> would become <c>tool.sh</c> beside
+	/// <c>link</c>, where the kernel and a shell resolve <c>..</c> from the directory <c>link</c>
+	/// really points to. Handing the path over as written lets the operating system resolve it the
+	/// same way the shell does. On Windows <c>..</c> is resolved as text anyway.
+	/// </para>
 	/// </remarks>
 	private static string ResolveFileName(string fileName, string? workingDirectory, bool isWindows)
 	{
@@ -341,7 +348,13 @@ public static class RunCommand
 		}
 
 		bool hasDirectoryPart = fileName.Contains('/') || (isWindows && fileName.Contains('\\'));
-		return hasDirectoryPart ? Path.GetFullPath(Path.Combine(workingDirectory, fileName)) : fileName;
+		if (!hasDirectoryPart)
+		{
+			return fileName;
+		}
+
+		string combined = Path.Combine(workingDirectory, fileName);
+		return isWindows ? Path.GetFullPath(combined) : combined;
 	}
 
 	private static ProcessStartInfo CreateStartInfo(string fileName, OutputHandler outputHandler, CommandOptions options, out bool useElevation)
