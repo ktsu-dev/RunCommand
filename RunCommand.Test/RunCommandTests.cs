@@ -780,6 +780,61 @@ public class RunCommandTests
 		}
 	}
 
+	[TestMethod]
+	public async Task ExecuteAsyncShouldResolveDotDotFromWhereASymlinkedWorkingDirectoryPoints()
+	{
+		if (OperatingSystem.IsWindows())
+		{
+			Assert.Inconclusive("Windows resolves '..' as text, as the shell there does, so there is no physical parent to follow.");
+		}
+
+		// <root>/link points at <root>/real/sub. From there a shell's '../tool.sh' is <root>/real/tool.sh,
+		// and a decoy at <root>/tool.sh shows up if '..' is collapsed as text against the link instead.
+		string root = CreateDirectoryForTest();
+		string real = Path.Join(root, "real");
+		string target = Path.Join(real, "sub");
+		string link = Path.Join(root, "link");
+		string scriptName = $"{nameof(RunCommandTests)}-{Guid.NewGuid():N}.sh";
+		string intendedScript = Path.Join(real, scriptName);
+		string decoyScript = Path.Join(root, scriptName);
+		_ = Directory.CreateDirectory(target);
+		if (Directory.Exists(link) || File.Exists(link))
+		{
+			File.Delete(link);
+		}
+
+		try
+		{
+			_ = Directory.CreateSymbolicLink(link, target);
+		}
+		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+		{
+			Assert.Inconclusive($"Symbolic links cannot be created here: {exception.Message}");
+		}
+
+		WriteScript(intendedScript, "physical-parent");
+		WriteScript(decoyScript, "lexical-parent");
+
+		try
+		{
+			List<string> output = [];
+			int exitCode = await RunCommand.ExecuteAsync(
+				$"../{scriptName}",
+				[],
+				new LineOutputHandler(onStandardOutput: output.Add),
+				new CommandOptions { WorkingDirectory = AbsoluteDirectoryPath.Create(link) }).ConfigureAwait(false);
+
+			Assert.AreEqual(0, exitCode, "Expected the script to run successfully.");
+			Assert.AreEqual("physical-parent", string.Concat(output).Trim(), "Expected '..' to name the parent of the directory the link points to, as 'cd link && ../tool.sh' does.");
+		}
+		finally
+		{
+			File.Delete(link);
+			File.Delete(intendedScript);
+			File.Delete(decoyScript);
+		}
+	}
+
 	private static void WriteScript(string path, string message)
 	{
 		if (OperatingSystem.IsWindows())
