@@ -1578,6 +1578,40 @@ public class RunCommandTests
 			@"printf '\377\n'",
 			new OutputHandler(encoding: new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true))).ConfigureAwait(false);
 
+	[TestMethod]
+	public async Task ExecuteAsyncShouldThrowAndKillTheCommandWhenTheOutputHandlerThrowsOperationCanceled() =>
+		await AssertAFaultedReadEndsTheCall(
+			"echo first",
+			new OutputHandler(_ => throw new OperationCanceledException(HandlerCancellationMessage)),
+			expectHandlerCancellation: true).ConfigureAwait(false);
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldThrowAndKillTheCommandWhenALineOutputHandlerThrowsTaskCanceled() =>
+		await AssertAFaultedReadEndsTheCall(
+			"echo first",
+			new LineOutputHandler(_ => throw new TaskCanceledException(HandlerCancellationMessage)),
+			expectHandlerCancellation: true).ConfigureAwait(false);
+
+	[TestMethod]
+	public async Task ExecuteAsyncShouldRethrowAnOperationCanceledExceptionFromTheOutputHandlerWhenTheOutputIsSmall()
+	{
+		List<string> delivered = [];
+		OperationCanceledException thrown = await Assert.ThrowsAsync<OperationCanceledException>(
+			() => RunCommand.ExecuteAsync(
+				"sh",
+				["-c", "echo one; sleep 0.2; echo two"],
+				new OutputHandler(chunk =>
+				{
+					delivered.Add(chunk);
+					throw new OperationCanceledException(HandlerCancellationMessage);
+				}))).ConfigureAwait(false);
+
+		Assert.AreEqual(HandlerCancellationMessage, thrown.Message, "Expected the handler's own exception, not one standing in for it.");
+		Assert.HasCount(1, delivered, "Expected delivery to stop at the chunk whose handler threw.");
+	}
+
+	private const string HandlerCancellationMessage = "thrown by the output handler";
+
 	/// <summary>
 	/// Runs a command that makes the first read fault and then writes far more than a pipe holds,
 	/// and requires the call to rethrow that fault promptly with the command no longer running.
@@ -1586,7 +1620,15 @@ public class RunCommandTests
 	/// A faulted read stops draining its pipe, so the command blocks writing to it and never exits.
 	/// Waiting for that exit is what hung the call.
 	/// </remarks>
-	private static async Task AssertAFaultedReadEndsTheCall(string faultingOutput, OutputHandler handler, [CallerMemberName] string testName = "")
+	/// <param name="faultingOutput">Shell that produces the output whose read fails.</param>
+	/// <param name="handler">The handler the command's output goes to.</param>
+	/// <param name="expectHandlerCancellation">
+	/// Whether the handler fails by throwing <see cref="OperationCanceledException"/> with
+	/// <see cref="HandlerCancellationMessage"/>. That ends its read Canceled rather than Faulted, and
+	/// the call has to rethrow it as itself.
+	/// </param>
+	/// <param name="testName">Names the pid file.</param>
+	private static async Task AssertAFaultedReadEndsTheCall(string faultingOutput, OutputHandler handler, bool expectHandlerCancellation = false, [CallerMemberName] string testName = "")
 	{
 		if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 		{
@@ -1609,8 +1651,17 @@ public class RunCommandTests
 			Task finished = await Task.WhenAny(execution, Task.Delay(TimeSpan.FromSeconds(10))).ConfigureAwait(false);
 
 			Assert.AreSame(execution, finished, "Expected a faulted read to end the call rather than wait on a command blocked writing to it.");
-			Assert.IsTrue(execution.IsFaulted, "Expected the fault to reach the caller.");
-			Assert.IsNotInstanceOfType<OperationCanceledException>(execution.Exception!.InnerException);
+			if (expectHandlerCancellation)
+			{
+				Assert.IsTrue(execution.IsCanceled, $"Expected the handler's cancellation to reach the caller, but the call {execution.Status}.");
+				OperationCanceledException thrown = await Assert.ThrowsAsync<OperationCanceledException>(() => execution).ConfigureAwait(false);
+				Assert.AreEqual(HandlerCancellationMessage, thrown.Message, "Expected the handler's own exception, not one standing in for it.");
+			}
+			else
+			{
+				Assert.IsTrue(execution.IsFaulted, "Expected the fault to reach the caller.");
+				Assert.IsNotInstanceOfType<OperationCanceledException>(execution.Exception!.InnerException);
+			}
 
 			string pid = (await File.ReadAllTextAsync(pidFile).ConfigureAwait(false)).Trim();
 			Assert.IsFalse(IsRunning(pid), $"Expected the command (pid {pid}) to have been killed.");

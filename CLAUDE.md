@@ -156,6 +156,9 @@ A read that fails (the handler throws, or a strict `Encoding` rejects the bytes)
 pipe, so the command blocks as soon as that pipe fills and never exits. The reader therefore throws
 the first failure without waiting for the other stream, and `RunAsync` kills the process tree
 before rethrowing it rather than waiting for an exit that will not come.
+A handler that throws `OperationCanceledException` ends its read Canceled rather than Faulted, and
+counts as a failed read all the same. Cancellation from the caller's token never arrives through a
+read; it has its own branch in `DrainOrAbandon`.
 
 ### Process configuration
 
