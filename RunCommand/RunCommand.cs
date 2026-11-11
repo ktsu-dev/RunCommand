@@ -428,7 +428,7 @@ public static class RunCommand
 				string? overlayPath = FindOverlayPath(options.EnvironmentVariables, isWindows);
 				if (overlayPath is not null)
 				{
-					startInfo.FileName = ResolveOnSearchPath(startInfo.FileName, overlayPath, startInfo.Environment, isWindows) ?? startInfo.FileName;
+					startInfo.FileName = ResolveOnSearchPath(startInfo.FileName, overlayPath, isWindows) ?? startInfo.FileName;
 				}
 			}
 
@@ -471,8 +471,7 @@ public static class RunCommand
 	/// </summary>
 	/// <param name="fileName">The executable as the caller gave it.</param>
 	/// <param name="searchPath">The overlay's <c>PATH</c>.</param>
-	/// <param name="environment">The command's environment, which supplies <c>PATHEXT</c> on Windows.</param>
-	/// <param name="isWindows">Whether to try the <c>PATHEXT</c> extensions and accept a backslash as a separator.</param>
+	/// <param name="isWindows">Whether to add <c>.exe</c> to a name with no extension and accept a backslash as a separator.</param>
 	/// <returns>The full path of the first match, or <see langword="null"/> to keep the usual lookup.</returns>
 	/// <remarks>
 	/// With <see cref="ProcessStartInfo.UseShellExecute"/> off, <c>Process.Start</c> searches the calling process's
@@ -480,8 +479,15 @@ public static class RunCommand
 	/// <c>PATH</c> at a pinned toolchain either failed to start a tool only it holds or started a same-named tool from
 	/// the caller's <c>PATH</c>. A name with a directory part is a path rather than a name to search for, so it is
 	/// left alone, and so are relative <c>PATH</c> entries, which would otherwise depend on the caller's directory.
+	/// <para>
+	/// On Windows a name with no extension is tried with <c>.exe</c> only, which is all <c>CreateProcess</c> appends,
+	/// rather than with every <c>PATHEXT</c> extension. A bare name therefore never resolves to a <c>.bat</c> or
+	/// <c>.cmd</c> file: <c>CreateProcess</c> runs those through <c>cmd.exe</c>, which re-parses the command line, so
+	/// <c>&amp;</c>, <c>|</c> or <c>%</c> in an argument would run as commands although the argument vector is escaped
+	/// for <c>CommandLineToArgvW</c>. A caller that wants a batch file names it with its extension.
+	/// </para>
 	/// </remarks>
-	internal static string? ResolveOnSearchPath(string fileName, string searchPath, IDictionary<string, string?> environment, bool isWindows)
+	internal static string? ResolveOnSearchPath(string fileName, string searchPath, bool isWindows)
 	{
 		bool hasDirectoryPart = fileName.Contains('/') || (isWindows && (fileName.Contains('\\') || fileName.Contains(':')));
 		if (fileName.Length == 0 || hasDirectoryPart)
@@ -489,23 +495,14 @@ public static class RunCommand
 			return null;
 		}
 
-		string[] candidates = [fileName];
-		if (isWindows && !Path.HasExtension(fileName))
-		{
-			_ = environment.TryGetValue("PATHEXT", out string? pathExt);
-			string[] extensions = (pathExt ?? ".COM;.EXE;.BAT;.CMD").Split([';'], StringSplitOptions.RemoveEmptyEntries);
-			candidates = Array.ConvertAll(extensions, extension => fileName + extension.Trim());
-		}
+		string candidate = isWindows && !Path.HasExtension(fileName) ? fileName + ".exe" : fileName;
 
 		foreach (string directory in searchPath.Split([Path.PathSeparator], StringSplitOptions.RemoveEmptyEntries))
 		{
-			foreach (string candidate in candidates)
+			string? match = TryExecutable(directory.Trim().Trim('"'), candidate);
+			if (match is not null)
 			{
-				string? match = TryExecutable(directory.Trim().Trim('"'), candidate);
-				if (match is not null)
-				{
-					return match;
-				}
+				return match;
 			}
 		}
 
