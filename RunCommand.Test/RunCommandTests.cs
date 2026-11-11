@@ -490,6 +490,84 @@ public class RunCommandTests
 	}
 
 	[TestMethod]
+	public void KillEntireTreeWhereSupportedShouldEndTheGrandchildrenToo()
+	{
+		SkipOnWindows();
+
+		// The netstandard builds, which .NET Core 3.x and .NET 5–7 apps load, kill through this method. Killing only
+		// the shell would leave its background sleep running (#134).
+		using Process process = Process.Start(new ProcessStartInfo("sh", ["-c", "sleep 300 & echo $!; wait"])
+		{
+			UseShellExecute = false,
+			RedirectStandardOutput = true,
+		})!;
+		int grandchild = int.Parse(process.StandardOutput.ReadLine()!, System.Globalization.CultureInfo.InvariantCulture);
+
+		try
+		{
+			RunCommand.KillEntireTreeWhereSupported(process);
+			process.WaitForExit();
+
+			bool ended = SpinWait.SpinUntil(() => !IsRunning(grandchild), TimeSpan.FromSeconds(5));
+
+			Assert.IsTrue(ended, "Expected the shell's background sleep to be killed with it.");
+		}
+		finally
+		{
+			if (IsRunning(grandchild))
+			{
+				using Process leftover = Process.GetProcessById(grandchild);
+				leftover.Kill();
+			}
+		}
+
+		static bool IsRunning(int processId)
+		{
+			try
+			{
+				using Process candidate = Process.GetProcessById(processId);
+				return !candidate.HasExited;
+			}
+			catch (ArgumentException)
+			{
+				return false;
+			}
+		}
+	}
+
+	[TestMethod]
+	public void KillEntireTreeWhereSupportedShouldKillTheProcessAloneWithoutTheTreeOverload()
+	{
+		// .NET Framework and Mono have no Process.Kill(bool), so the process itself is still killed there.
+		(string fileName, string[] arguments) = GetSleepCommand();
+		using Process process = Process.Start(new ProcessStartInfo(fileName, arguments) { UseShellExecute = false })!;
+
+		try
+		{
+			RunCommand.KillEntireTreeWhereSupported(process, killEntireProcessTree: null);
+
+			Assert.IsTrue(process.WaitForExit(10_000), "Expected the process to be killed without the tree overload.");
+		}
+		finally
+		{
+			if (!process.HasExited)
+			{
+				process.Kill(entireProcessTree: true);
+			}
+		}
+	}
+
+	[TestMethod]
+	public void KillEntireTreeWhereSupportedShouldThrowTheOverloadsOwnExceptionUnwrapped()
+	{
+		// TryKill catches InvalidOperationException, Win32Exception and AggregateException by type, so a
+		// TargetInvocationException from the reflection call would escape it (#107).
+		using Process neverStarted = new();
+
+		_ = Assert.ThrowsExactly<InvalidOperationException>(() => RunCommand.KillEntireTreeWhereSupported(neverStarted));
+	}
+
+	[TestMethod]
 	public async Task CancelShouldNotRunTheCallersContinuationInline()
 	{
 		using CancellationTokenSource cancellationTokenSource = new();
